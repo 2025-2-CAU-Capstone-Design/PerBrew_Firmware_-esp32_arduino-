@@ -11,8 +11,6 @@ namespace{
     }
 }
 
-
-
 LoadCellDriver::LoadCellDriver() {
 }
 

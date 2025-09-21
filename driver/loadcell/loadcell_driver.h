@@ -1,7 +1,6 @@
 #pragma once
 #include "../pin_map.h"
 #include <Arduino.h>
-#include <SPI.h>
 #include <vector>
 #include "HX711.h"
 
