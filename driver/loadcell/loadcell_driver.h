@@ -59,11 +59,13 @@ class LoadCellDriver {
 
         
     private:
+        // === HX711 관련 변수 ===
         HX711 scale_{};        
         const int DOUT = pin::WeighingDT;
         const int SCK = pin::WeightingSCK;
+
+        // === 상태 변수 ===
         float currentWeight_{0.0f};
-        float scaleFactor_{1.0f};       
         long offset_{0};
         uint8_t gain_{128};
         uint8_t defaultSamples_{10};

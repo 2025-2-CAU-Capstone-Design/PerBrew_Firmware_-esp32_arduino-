@@ -168,7 +168,7 @@ void GrinderDriver::updateGrindingState() {
     if (elapsedTime >= maxGrindingDuration_) {
         analogWrite(GrindPWMPin, 0);
         grindingState_ = GrinderState::COMPLETED;
-        Serial.printf("[Grinder] Timeout after %lu ms\n", elapsedTime); // 디버깅용 출력
+        Serial.println("[Grinder] Timeout after " + String(elapsedTime) + " ms"); // 디버깅용 출력
         return;
     }
     

@@ -1,16 +1,5 @@
 #include "./loadcell_driver.h"
 
-namespace{
-    static uint8_t setGainValue(uint8_t gain) {
-        switch(gain) {
-            case 128: return 1; 
-            case 64:  return 3; 
-            case 32:  return 2; 
-            default:  return 1; // 기본값으로 설정
-        }
-    }
-}
-
 LoadCellDriver::LoadCellDriver() {
 }
 
@@ -28,11 +17,18 @@ bool LoadCellDriver::begin(uint8_t gain, uint8_t samplesForTare) {
 }
 
 bool LoadCellDriver::tare(uint8_t times) {
-    if(times == 0)
-        times = defaultSamples_;
+    if (!scale_.is_ready()) {
+        Serial.println("[LoadCell] Not ready for tare");
+        return false;
+    }
+    
+    if (times == 0) times = defaultSamples_;
+    
     scale_.tare(times);
     offset_ = scale_.get_offset();
     currentWeight_ = 0.0f;
+
+    Serial.println("[LoadCell] Tare completed"); // 디버깅용 출력
     return true;
 }
 
