@@ -1,17 +1,17 @@
 #include "pouringSection_driver.h"
 
-pouringSectionDriver::pouringSectionDriver()
+PouringSectionDriver::PouringSectionDriver()
     : rotationStepper_(AccelStepper::DRIVER, pin::PouringRotationStep, pin::PouringRotationDir),
       tiltStepper_(AccelStepper::DRIVER, pin::PouringAngleStep, pin::PouringAngleDir) {
 }
 
-pouringSectionDriver::~pouringSectionDriver() {
+PouringSectionDriver::~PouringSectionDriver() {
     stopPump();
     stopRotation();
     stopTilt();
 }
 
-bool pouringSectionDriver::begin() {
+bool PouringSectionDriver::begin() {
     // 초음파 센서 핀 설정
     pinMode(TrigPin, OUTPUT);
     pinMode(EchoPin, INPUT);
@@ -42,7 +42,7 @@ bool pouringSectionDriver::begin() {
     return true;
 }
 
-long pouringSectionDriver::measureDistanceCM() {
+long PouringSectionDriver::measureDistanceCM() {
     // 트리거 신호 생성
     digitalWrite(TrigPin, LOW);
     delayMicroseconds(2);
@@ -74,17 +74,17 @@ long pouringSectionDriver::measureDistanceCM() {
 
 
 // === 스텝 모터 제어 함수 ===
-void pouringSectionDriver::setStepperSpeed(float speed) {
+void PouringSectionDriver::setStepperSpeed(float speed) {
     rotationStepper_.setMaxSpeed(speed);
     tiltStepper_.setMaxSpeed(speed);
 }
 
-void pouringSectionDriver::setStepperAcceleration(float acceleration) {
+void PouringSectionDriver::setStepperAcceleration(float acceleration) {
     rotationStepper_.setAcceleration(acceleration);
     tiltStepper_.setAcceleration(acceleration);
 }
 
-bool pouringSectionDriver::isObjectInRange(int minCM, int maxCM) {
+bool PouringSectionDriver::isObjectInRange(int minCM, int maxCM) {
     long distance = measureDistanceCM();
     if (distance < 0) return false;
     return (distance >= minCM && distance <= maxCM);
@@ -94,13 +94,13 @@ bool pouringSectionDriver::isObjectInRange(int minCM, int maxCM) {
 //============================================================================================================================================
 // === 노즐 회전 제어 ===
 
-void pouringSectionDriver::rotateNozzle(int steps, bool clockwise) {
+void PouringSectionDriver::rotateNozzle(int steps, bool clockwise) {
     long targetPosition = rotationStepper_.currentPosition() + (clockwise ? steps : -steps);
     rotationStepper_.moveTo(targetPosition);
     status_.isRotating = true;
 }
 
-void pouringSectionDriver::rotateNozzleToAngle(float degrees) {
+void PouringSectionDriver::rotateNozzleToAngle(float degrees) {
     // 1.8도 스텝 모터 기준 (200 스텝/회전)
     constexpr float STEPS_PER_DEGREE = 200.0f / 360.0f;
     long targetSteps = lround(degrees * STEPS_PER_DEGREE);
@@ -108,14 +108,14 @@ void pouringSectionDriver::rotateNozzleToAngle(float degrees) {
     status_.isRotating = true;
 }
 
-void pouringSectionDriver::stopRotation() {
+void PouringSectionDriver::stopRotation() {
     rotationStepper_.stop();
     status_.isRotating = false;
 }
 
 //============================================================================================================================================
 // === 노즐 틸트 제어 ===
-void pouringSectionDriver::tiltNozzle(long distanceCM) {
+void PouringSectionDriver::tiltNozzle(long distanceCM) {
     if (distanceCM < PouringConfig::MIN_DISTANCE_CM || distanceCM > PouringConfig::MAX_DISTANCE_CM) {
         setError(PouringError::DISTANCE_OUT_OF_RANGE);
         return;
@@ -125,7 +125,7 @@ void pouringSectionDriver::tiltNozzle(long distanceCM) {
     tiltNozzleToAngle(mappedAngle);
 }
 
-void pouringSectionDriver::tiltNozzleToAngle(float degrees) {
+void PouringSectionDriver::tiltNozzleToAngle(float degrees) {
     // 1.8도 스텝 모터 기준
     constexpr float STEPS_PER_DEGREE = 200.0f / 360.0f;
     long targetSteps = lround(degrees * STEPS_PER_DEGREE);
@@ -134,7 +134,7 @@ void pouringSectionDriver::tiltNozzleToAngle(float degrees) {
     status_.isTilting = true;
 }
 
-void pouringSectionDriver::stopTilt() {
+void PouringSectionDriver::stopTilt() {
     tiltStepper_.stop();
     status_.isTilting = false;
 }
@@ -143,7 +143,7 @@ void pouringSectionDriver::stopTilt() {
 //============================================================================================================================================
 // === 펌프 제어 ===
 
-void pouringSectionDriver::startPump(int pwmValue) {
+void PouringSectionDriver::startPump(int pwmValue) {
     pwmValue = constrain(pwmValue, PouringConfig::PUMP_MIN_PWM, PouringConfig::PUMP_MAX_PWM);
     analogWrite(PumpPin, pwmValue);
     status_.isPumping = (pwmValue > 0);
@@ -153,21 +153,21 @@ void pouringSectionDriver::startPump(int pwmValue) {
     Serial.println(pwmValue);
 }
 
-void pouringSectionDriver::stopPump() {
+void PouringSectionDriver::stopPump() {
     analogWrite(PumpPin, 0);
     status_.isPumping = false;
     status_.currentPumpPWM = 0;
     Serial.println("Pump stopped");
 }
 
-void pouringSectionDriver::setPumpSpeed(int pwmValue) {
+void PouringSectionDriver::setPumpSpeed(int pwmValue) {
     pwmValue = constrain(pwmValue, PouringConfig::PUMP_MIN_PWM, PouringConfig::PUMP_MAX_PWM);
     analogWrite(PumpPin, pwmValue);
     status_.currentPumpPWM = pwmValue;
     status_.isPumping = (pwmValue > 0);
 }
 
-void pouringSectionDriver::setPumpSpeedPercent(float percent) {
+void PouringSectionDriver::setPumpSpeedPercent(float percent) {
     percent = constrain(percent, 0.0, 100.0);
     int pwmValue = (int)(percent * PouringConfig::PUMP_MAX_PWM / 100.0);
     setPumpSpeed(pwmValue);
@@ -177,7 +177,7 @@ void pouringSectionDriver::setPumpSpeedPercent(float percent) {
 
 // ============================================================================================================================================
 // === 내부 함수들 ===
-void pouringSectionDriver::setError(PouringError error) {
+void PouringSectionDriver::setError(PouringError error) {
     status_.lastError = error;
     if (error != PouringError::NONE) {
         Serial.print("PouringSection Error: ");
@@ -185,17 +185,17 @@ void pouringSectionDriver::setError(PouringError error) {
     }
 }
 
-bool pouringSectionDriver::validateDistance(long distance) {
+bool PouringSectionDriver::validateDistance(long distance) {
     return (distance >= PouringConfig::MIN_DISTANCE_CM && 
             distance <= PouringConfig::MAX_DISTANCE_CM);
 }
 
-void pouringSectionDriver::updateSteppers() {
+void PouringSectionDriver::updateSteppers() {
     rotationStepper_.run();
     tiltStepper_.run();
 }
 
-void pouringSectionDriver::update() {
+void PouringSectionDriver::update() {
     updateSteppers();    
     // 상태 업데이트
     status_.isRotating = rotationStepper_.isRunning();

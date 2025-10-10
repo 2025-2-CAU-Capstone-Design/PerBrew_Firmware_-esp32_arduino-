@@ -32,10 +32,10 @@ struct PouringStatus {
     PouringError lastError = PouringError::NONE;
 };
 
-class pouringSectionDriver {
+class PouringSectionDriver {
     public:
-        pouringSectionDriver();
-        ~pouringSectionDriver();
+        PouringSectionDriver();
+        ~PouringSectionDriver();
         
         // 초기화 및 설정
         bool begin();

@@ -12,10 +12,10 @@ enum class HeaterState {
     ERROR
 };
 
-class heaterDriver {
+class HeaterDriver {
     public:
-        heaterDriver();
-        ~heaterDriver() {delete pidController;};
+        HeaterDriver();
+        ~HeaterDriver() {delete pidController;};
         void begin();
 
         // == 온도 설정 및 제어 == 

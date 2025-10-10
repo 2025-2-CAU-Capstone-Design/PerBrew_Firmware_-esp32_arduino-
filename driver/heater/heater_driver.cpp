@@ -1,5 +1,16 @@
 #include "./heater_driver.h"
 
+// 작동 흐름
+/*
+    1. begin() - 초기화
+    2. startHeating(targetTemp) - 목표 온도 설정 및 가열 시작
+    3. update() - 주기적으로 호출하여 상태 업데이트 및 제어
+    update() 내부에서:
+        - updateHeatingState() - 상태 머신 업데이트
+        - handleTemperatureControl() - PID 제어 및 PWM 출력
+        - handleSafetyCheck() - 안전 체크
+*/
+
 namespace {
     // PID 제어 상수
     static double PID_INPUT = 0.0, PID_OUTPUT = 0.0, PID_SETPOINT = 0.0;
@@ -24,9 +35,9 @@ namespace {
 }
 
 
-heaterDriver::heaterDriver(){}
+HeaterDriver::HeaterDriver(){}
 
-void heaterDriver::begin() {
+void HeaterDriver::begin() {
     #if defined(ARDUINO_ARCH_ESP32)
     analogReadResolution(12);  // ESP32: 12bit ADC
     analogWriteResolution(8);  // PWM: 8bit
@@ -47,7 +58,7 @@ void heaterDriver::begin() {
 }
 
 // === 히터 시작 === 
-void heaterDriver::startHeating(double targetTemp) {
+void HeaterDriver::startHeating(double targetTemp) {
     if(heaterState_ == HeaterState::HEATING || heaterState_ == HeaterState::MAINTAINING) {
         Serial.println("[Heater] Already heating.");
         return; // 이미 가열 중
@@ -63,7 +74,7 @@ void heaterDriver::startHeating(double targetTemp) {
 }
 
 // === 히터 정지 === 
-void heaterDriver::stopHeating() {
+void HeaterDriver::stopHeating() {
     if(heaterState_ == HeaterState::IDLE) {
         Serial.println("[Heater] Not heating.");
         return; // 가열 중이 아님
@@ -80,7 +91,7 @@ void heaterDriver::stopHeating() {
 }
 
 // === 상태 업데이트 === 
-void heaterDriver::update() {
+void HeaterDriver::update() {
     if (heaterState_ == HeaterState::IDLE || heaterState_ == HeaterState::ERROR) {
         return;  // 동작할 필요 없음
     }
@@ -88,7 +99,7 @@ void heaterDriver::update() {
 }
 
 // === 온도 안정성 확인 ===
-bool heaterDriver::isTemperatureStable(double tolerance) const {
+bool HeaterDriver::isTemperatureStable(double tolerance) const {
     if (heaterState_ != HeaterState::MAINTAINING) {
         return false;
     }
@@ -98,7 +109,7 @@ bool heaterDriver::isTemperatureStable(double tolerance) const {
 
 // 온도 값 읽어오기
 // TMP36 사용 가정, PWM 10bit 가정 (0-1023)
-double heaterDriver::readThermistor(){
+double HeaterDriver::readThermistor(){
     #if defined(ARDUINO_ARCH_ESP32)
     const float ADC_MAX = 4095.0f;  // 12bit
     const float VREF = 3.3f;        // 3.3V
@@ -117,7 +128,7 @@ double heaterDriver::readThermistor(){
 
 
 // === 평균 온도 읽기 ===
-double heaterDriver::readTemperatureAverage(int samples) {
+double HeaterDriver::readTemperatureAverage(int samples) {
     if (samples <= 0) samples = 1;
     double sum = 0.0;
     int validSamples = 0;
@@ -141,7 +152,7 @@ double heaterDriver::readTemperatureAverage(int samples) {
 
 // === 상태 머신 업데이트 ===
 // update에서 주기적으로 호출하여 상태를 업데이트
-void heaterDriver::updateHeatingState() {
+void HeaterDriver::updateHeatingState() {
     unsigned long currentTime = millis();
 
     // === 안전 장치, handleSafetyCheck 호출 ===
@@ -163,7 +174,7 @@ void heaterDriver::updateHeatingState() {
     }
 }
 
-void heaterDriver::handleTemperatureControl() {
+void HeaterDriver::handleTemperatureControl() {
     double readTemp = readTemperatureAverage(SAMPLE_COUNT);
     //온도 읽어오기 실패
     if (!isfinite(readTemp)) {
@@ -220,7 +231,7 @@ void heaterDriver::handleTemperatureControl() {
 
 
 // == 안전 체크 함수 == 
-void heaterDriver::handleSafetyCheck()  {
+void HeaterDriver::handleSafetyCheck()  {
     double temp = readTemperatureAverage(SAMPLE_COUNT);
     
     // 안전장치 1. 온도 읽기 실패
