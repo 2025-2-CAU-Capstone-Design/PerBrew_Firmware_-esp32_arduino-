@@ -1,7 +1,9 @@
+#pragma once
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <BLEDevice.h>
+#include <nvs_flash.h>
 /*
     부팅 설정 관리 클래스
     BootConfig
@@ -10,35 +12,46 @@
         1. 실행 모드 (BLE 모드 / WiFi 모드)
         2. 기기 MAC 주소 (없으면 랜덤 생성)
         3. 연결된 사용자 ID
-        4. 서버 주소 (기본값: "example.com")
+        4. 서버 주소 (기본값)
         5. 기타 key-value 설정*/
 
-enum class BootMode{
+enum class ConnectionMode{
     BLE,
-    WiFi
+    WIFI
 };
 
-class BootConfig{
-    public:
-        BootConfig();
-        void begin();
 
-        // Key-Value 저장/로드
-        void setValue(const String& ns, const String& key, const String& value);
-        String getValue(const String& ns, const String& key, const String& defaultValue = "");
+class BootManager {
+public:
+    BootManager();
+    
+    // 부팅 시 자동으로 WiFi 연결 시도 -> 실패 시 BLE 모드
+    ConnectionMode begin();
+    
+    // WiFi 관리
+    void saveWIFICredentials(const String& ssid, const String& password);
+    String getWiFiSSID();
+    String getWiFiPassword();
+    // WiFi 자격증명 삭제
+    void clearWiFiCredentials();
 
-        // 필수 설정값 관리
-        void ensureMacAddress(const String& ns);
-        void ensureUserID(const String& ns);
-        void ensureServerAddress(const String& ns);
-        // 모드 관리
-        void setMode(BootMode mode);
-        BootMode getMode() const;
+    // 현재 연결 모드 반환
+    ConnectionMode getCurrentMode() const;
 
-        // 리셋 (모든 값 삭제)
-        void reset();
+    // 머신 ID 설정/조회
+    String getMachineID();
 
-    private:
-        Preferences preferences;
-        BootMode currentMode;
+private:
+    Preferences preferences;
+    ConnectionMode currentMode;
+    String machineID = "";
+    
+    // WiFi 연결 시도
+    bool tryConnectWiFi();
+    
+    // BLE 모드 시작
+    void startBLEMode();
+
+    // 머신 ID 생성
+    String generateMachineID();
 };

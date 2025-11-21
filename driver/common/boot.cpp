@@ -1,78 +1,122 @@
 #include "boot.h"
+#define WIFI_CONNECT_TIMEOUT 10000  // 10초
+    
+BootManager::BootManager() : currentMode(ConnectionMode::BLE) {}
 
-BootConfig::BootConfig() : currentMode(BootMode::BLE) {}
 
-void BootConfig::begin() {
-    // "boot_config" namespace 열기
-    preferences.begin("boot_config", false);
+/*
+  대대적인 수정
+  1. preferences.begin()/end()를 각 메서드에서 호출하도록 변경
+     - 메서드 호출 시점에만 Preferences를 열고 닫음
+  2. ensureMacAddress, ensureUserID, ensureServerAddress 메서드 추가
+     - 필수 설정값이 없을 경우 기본값을 생성/저장하도록 구현
+  3. setMode, getMode 메서드 구현
+  참고 
+    https://docs.espressif.com/projects/arduino-esp32/en/latest/tutorials/preferences.html
+*/
 
-    // 실행 모드 불러오기 (없으면 BLE 기본값)
-    int modeVal = preferences.getInt("mode", static_cast<int>(BootMode::BLE));
-    currentMode = static_cast<BootMode>(modeVal);
-
-    // MAC 주소 / UserID / ServerAddress 기본값 확인
-    ensureMacAddress("boot_config");
-    ensureUserID("boot_config");
-    ensureServerAddress("boot_config");
-
-    preferences.end();
-}
-
-void BootConfig::setValue(const String& ns, const String& key, const String& value) {
-    preferences.begin(ns.c_str(), false);
-    preferences.putString(key.c_str(), value);
-    preferences.end();
-}
-
-String BootConfig::getValue(const String& ns, const String& key, const String& defaultValue) {
-    preferences.begin(ns.c_str(), true);
-    String val = preferences.getString(key.c_str(), defaultValue);
-    preferences.end();
-    return val;
-}
-
-void BootConfig::ensureMacAddress(const String& ns) {
-    preferences.begin(ns.c_str(), false);
-    String mac = preferences.getString("mac", "");
-    if (mac.isEmpty()) {
-        uint64_t chipid = ESP.getEfuseMac();
-        char macStr[18];
-        sprintf(macStr, "%04X%08X", (uint16_t)(chipid >> 32), (uint32_t)chipid);
-        preferences.putString("mac", String(macStr));
+ConnectionMode BootManager::begin() {
+    preferences.begin("boot", false);
+    
+    // WiFi 연결 시도
+    if (tryConnectWiFi()) {
+        currentMode = ConnectionMode::WIFI;
+        Serial.println("[Boot] WiFi Connected");
+    } else {
+        // WiFi 실패 -> BLE 모드
+        startBLEMode();
+        currentMode = ConnectionMode::BLE;
+        Serial.println("[Boot] BLE Mode Started");
     }
-    preferences.end();
-}
-
-void BootConfig::ensureUserID(const String& ns) {
-    preferences.begin(ns.c_str(), false);
-    if (!preferences.isKey("user_id")) {
-        preferences.putString("user_id", "");
-    }
-    preferences.end();
-}
-
-void BootConfig::ensureServerAddress(const String& ns) {
-    preferences.begin(ns.c_str(), false);
-    if (!preferences.isKey("server_addr")) {
-        preferences.putString("server_addr", "example.com");
-    }
-    preferences.end();
-}
-
-void BootConfig::setMode(BootMode mode) {
-    preferences.begin("boot_config", false);
-    preferences.putInt("mode", static_cast<int>(mode));
-    preferences.end();
-    currentMode = mode;
-}
-
-BootMode BootConfig::getMode() const {
+    
     return currentMode;
 }
 
-void BootConfig::reset() {
-    preferences.begin("boot_config", false);
-    preferences.clear();
+ bool BootManager::tryConnectWiFi() {
+    preferences.begin("boot", false);
+    bool doesExist = preferences.isKey("ssid");
+    if(!doesExist) {
+        preferences.end();
+        return false;
+    }
+    String ssid = preferences.getString("ssid", "");
+    String password = preferences.getString("password", "");
+    
+    Serial.printf("[Boot] Trying WiFi: %s\n", ssid.c_str());
+    
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid.c_str(), password.c_str());
+    
+    unsigned long startTime = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+        if (millis() - startTime > WIFI_CONNECT_TIMEOUT) {
+            WiFi.disconnect();
+            return false;
+        }
+        delay(100);
+    }
     preferences.end();
-    currentMode = BootMode::BLE;
+    return true;
+}
+
+void BootManager::startBLEMode() {
+    BLEDevice::init("PerBrew");
+    // BLE 서버 설정은 별도 모듈에서 처리
+}
+
+void BootManager::saveWIFICredentials(const String& ssid, const String& password) {
+    preferences.begin("boot", false);
+    preferences.putString("ssid", ssid);
+    preferences.putString("password", password);
+    preferences.end();
+    Serial.printf("[Boot] WiFi Saved: %s\n", ssid.c_str());
+}
+
+String BootManager::getWiFiSSID() {
+    preferences.begin("boot", true);
+    String ssid = preferences.getString("ssid", "");
+    if(ssid=="") {
+        Serial.println("[Boot] No WiFi SSID stored");
+        preferences.end();
+        return "";
+    }
+    preferences.end();
+    return ssid;
+}
+
+String BootManager::getWiFiPassword() {
+    preferences.begin("boot", true);
+    String password = preferences.getString("password", "");
+    if(password=="") {
+        Serial.println("[Boot] No WiFi Password stored");
+        preferences.end();
+        return "";
+    }
+    preferences.end();
+    return password;
+}
+
+void BootManager::clearWiFiCredentials() {
+    preferences.begin("boot", false);
+    preferences.remove("ssid");
+    preferences.remove("password");
+    preferences.end();
+    Serial.println("[Boot] WiFi Credentials Cleared");
+}
+
+ConnectionMode BootManager::getCurrentMode() const {
+    return currentMode;
+}
+
+String BootManager::getMachineID() {
+    return machineID;
+}
+
+String BootManager::generateMachineID() {
+    String id = "";
+    const char* chars = "0123456789ABCDEF";
+    for (int i = 0; i < 12; i++) {
+        id += chars[random(0, 16)];
+    }
+    return id;
 }
