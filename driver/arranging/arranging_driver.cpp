@@ -1,22 +1,25 @@
 #include "arranging_driver.h"
 
 namespace {
-    constexpr float DEFAULT_SPEED = 1000.0f;       // 스텝/초
-    constexpr float DEFAULT_ACCELERATION = 500.0f; // 스텝/초²
+    constexpr float DEFAULT_SPEED = 500.0f;       // 스텝/초
+    constexpr float DEFAULT_ACCELERATION = 250.0f; // 스텝/초^2
 }
 
 ArrangingDriver::ArrangingDriver()
-    : stepper_(AccelStepper::DRIVER, pin::RearraingMotorStep, pin::RearraingMotorDir),
-      directionCW_(true) {}
+        // AccelStepper constructor for DRIVER mode expects (stepPin, dirPin)
+        : stepper_(AccelStepper::DRIVER, 16, 4),
+            directionCW_(true) {}
 
 void ArrangingDriver::begin() {
+    pinMode(16, OUTPUT);
+    pinMode(4, OUTPUT);
     stepper_.setMaxSpeed(DEFAULT_SPEED);
     stepper_.setAcceleration(DEFAULT_ACCELERATION);
+    stepper_.setMinPulseWidth(5);; 
+    /*while(digitalRead(rearrangingMotorDirPin) == HIGH) {
+        stepper_.runSpeed();
+    }*/
     stepper_.setCurrentPosition(0);
-
-    pinMode(pin::RearraingMotorStep, OUTPUT);
-    pinMode(pin::RearraingMotorDir, OUTPUT);
-
     Serial.println("ArrangingDriver initialized");
 }
 
@@ -28,9 +31,17 @@ void ArrangingDriver::setDirection(bool clockwise) {
 
 void ArrangingDriver::move(long steps) {
     long dirSteps = directionCW_ ? steps : -steps;
-    stepper_.move(dirSteps);
-    Serial.print("Moving ");
+    stepper_.setSpeed(directionCW_ ? DEFAULT_SPEED : -DEFAULT_SPEED);
+    long startPos = stepper_.currentPosition();
+    long targetPos = startPos + dirSteps;
+    Serial.println("Current Position: " + String(startPos));
+    Serial.println("Target Position: " + String(targetPos));
+    while (stepper_.currentPosition() != targetPos) {
+        stepper_.runSpeed();  // 내가 지정한 속도로 직접 회전
+    }
+    Serial.print("Moved ");
     Serial.println(dirSteps);
+    directionCW_ = !directionCW_;
 }
 
 void ArrangingDriver::update() {

@@ -1,31 +1,27 @@
 #include "boot.h"
 #define WIFI_CONNECT_TIMEOUT 10000  // 10초
     
-BootManager::BootManager() : currentMode(ConnectionMode::BLE) {}
-
-
 /*
   대대적인 수정
   1. preferences.begin()/end()를 각 메서드에서 호출하도록 변경
-     - 메서드 호출 시점에만 Preferences를 열고 닫음
-  2. ensureMacAddress, ensureUserID, ensureServerAddress 메서드 추가
-     - 필수 설정값이 없을 경우 기본값을 생성/저장하도록 구현
-  3. setMode, getMode 메서드 구현
+     - 메서드 호출 시점에만 Preferences를 열고 닫아야 함.
+  2. BLE 모드, WIFI 모드 추가함
+     - boot.h/cpp은 첫 부팅 시 eeproom을 확인하는 역할로 한정. 이후 네트워크 관련 테스킹은 ble/wifi를 분리해서 관리
   참고 
     https://docs.espressif.com/projects/arduino-esp32/en/latest/tutorials/preferences.html
 */
 
-ConnectionMode BootManager::begin() {
+String BootManager::begin() {
     preferences.begin("boot", false);
     
     // WiFi 연결 시도
     if (tryConnectWiFi()) {
-        currentMode = ConnectionMode::WIFI;
+        currentMode = WIFI_MODE;
         Serial.println("[Boot] WiFi Connected");
     } else {
         // WiFi 실패 -> BLE 모드
         startBLEMode();
-        currentMode = ConnectionMode::BLE;
+        currentMode = BLE_MODE;
         Serial.println("[Boot] BLE Mode Started");
     }
     
@@ -104,7 +100,7 @@ void BootManager::clearWiFiCredentials() {
     Serial.println("[Boot] WiFi Credentials Cleared");
 }
 
-ConnectionMode BootManager::getCurrentMode() const {
+String BootManager::getCurrentMode() const {
     return currentMode;
 }
 

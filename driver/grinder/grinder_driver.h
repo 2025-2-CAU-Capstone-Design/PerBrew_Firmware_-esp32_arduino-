@@ -16,10 +16,13 @@ class GrinderDriver {
         void begin();
 
         // === 그라인더 위치 설정 ===
-        void setClicks(int clicks);
-        
+        bool setClicks(int clicks);
+        // Calibration: how many stepper steps correspond to one 'click' of the potentiometer
+        void setStepsPerClick(unsigned int stepsPerClick) { stepsPerClick_ = stepsPerClick; }
+            
         // === 현재 클릭 값 반환 ===
         int getCurrentClicks(); 
+        int getCurrentADC() { return readADCValue(); }
 
         // === 상태 확인 ===
         GrinderState getState() const { return grindingState_; }
@@ -37,9 +40,8 @@ class GrinderDriver {
         void update();          // task에서 주기적 호출
 
     private:
-
         // == 상태 변수 == 
-        int currentClicks_ = 0;
+        int currentClicks_ = 0.0f;
         AccelStepper stepper_;
         float kMaxSpeed_      = 1200.0f;   // steps/s
         float kAcceleration_  = 800.0f;    // steps/s^2   
@@ -50,7 +52,7 @@ class GrinderDriver {
         unsigned long lastCurrentCheckTime_ = 0;
         int stableIdleCount_ = 0;
         int lastCurrentReading_ = 0;
-        
+
         // === 스탭모터 + 포텐셜미터 핀 === 
         const int ClickStepPin = pin::ClickMotorStep;           
         const int ClickDirPin = pin::ClickMotorDir;
@@ -59,10 +61,17 @@ class GrinderDriver {
         const int GrindPWMPin = pin::GrindingMoterPWM;
         const int GrindMoterADC = pin::GrindingMoterADC;
 
+        // calibration for open-loop movement (steps per potentiometer click)
+        unsigned int stepsPerClick_ = 64; // default, tune per hardware
+        unsigned int filterWindow_ = 5; // moving average window for ADC filtering
+
         //  === 내부 함수 구현 === 
         int adcToClicks(int adc);       // ADC -> 클릭 수 변환
         int clicksToADC(int clicks);    // 클릭 수 -> ADC 변환
-        long readADCValue() { return analogRead(ClickPotADC); }    // 포텐셜미터 ADC 읽기
+        long readADCValue() { 
+            //Serial.println(analogRead(ClickPotADC));
+            return analogRead(ClickPotADC); 
+        }    // 포텐셜미터 ADC 읽기
         void updateGrindingState();  // 상태 머신 업데이트
         void handleCurrentMonitoring();  // 전류 모니터링 처리
 };

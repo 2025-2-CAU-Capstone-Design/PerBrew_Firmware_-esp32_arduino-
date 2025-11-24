@@ -33,7 +33,7 @@ bool HttpConnectionManager::begin(const String& serverIP, uint16_t port) {
     return true;
 }
 
-// static 콜백 함수
+// 콜백 함수
 void HttpConnectionManager::webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
     if (instance != nullptr) {
         instance->handleEvent(type, payload, length);
@@ -102,8 +102,10 @@ bool HttpConnectionManager::sendMessage(String& jsonData) {
 }
 
 void HttpConnectionManager::routeMessage() {
+    // getLastReceivedMessage()는 반환 후 초기화하므로 한 번만 호출
+    String receivedMsg = getLastReceivedMessage();
     auto& doc = jsonDoc;
-    auto error = deserializeJson(doc, getLastReceivedMessage());
+    auto error = deserializeJson(doc, receivedMsg);
     if(error){
         Serial.print("[WIFI] JSON Deserialization failed: ");
         Serial.println(error.c_str());
@@ -111,23 +113,30 @@ void HttpConnectionManager::routeMessage() {
     }
     
     String type = doc["type"] | "";
-        if (type == "START_BREW") {
-            setLastReceivedCommand("START_BREW");
+        if(type =="RECIPE_DATA"){
+            setRecipeParsing(&receivedMsg);
+            RecipeInfo parsed = getRecipeParsing();
+            if(gRecipeQueue != nullptr){
+                if (xQueueSend(gRecipeQueue, &parsed, 0) != pdTRUE) {
+                    Serial.println("[WIFI] Failed to send recipe to queue");
+                }
+                else {
+                    Serial.println("[WIFI] Recipe sent to queue");
+                }
+            }
         }
-        else if (type == "STOP_BREW") {
-            setLastReceivedCommand("STOP_BREW");
-        }
-        else if (type == "REGISTER_MACHINE") {
-            setLastReceivedCommand("REGISTER_MACHINE");
-        }
-        else if (type == "LOADCELL_VALUE") {
-            setLastReceivedCommand("LOADCELL_VALUE");
-        }
-        else if (type == "BREW_STATUS") {
-            setLastReceivedCommand("BREW_STATUS");
-        }
-        else {
-            Serial.println("[WIFI] Unknown command type");
+        else if (type == "START_BREW" || type == "STOP_BREW" ||
+             type == "REGISTER_MACHINE" || type == "LOADCELL_VALUE" ||
+             type == "BREW_STATUS")
+            {
+                String command = type;
+                if(gCommandQueue != nullptr){
+                    xQueueSend(gCommandQueue, &command, 0);
+                    Serial.println("[WIFI] Command sent to queue: " + command);
+                }
+            }
+        else{
+            Serial.println("[WIFI] Unknown message type: " + type);
         }
 }
 
@@ -158,4 +167,34 @@ bool HttpConnectionManager::reconnect() {
     wsClient.begin(serverUrl, serverPort, "/ws");
     
     return true;
+}
+
+void HttpConnectionManager::setRecipeParsing(String *recipeJson) {
+    StaticJsonDocument<4096> doc;
+    DeserializationError error = deserializeJson(doc, *recipeJson);
+    if (error) return;
+
+    ParsedRecipe.rinsing = doc["recipe"]["rinsing"] | true;
+    ParsedRecipe.water_temperature_c = doc["recipe"]["water_temperature_c"] | 92;
+    ParsedRecipe.dose_g = doc["recipe"]["dose_g"] | 15.0;
+    ParsedRecipe.total_brew_time_s = doc["recipe"]["total_brew_time_s"] | 180;
+
+    ParsedRecipe.grind_level = doc["recipe"]["grind_level"] | 50;
+    ParsedRecipe.grind_microns = doc["recipe"]["grind_microns"] | 600;
+
+    JsonArray steps = doc["recipe"]["pouring_steps"].as<JsonArray>();
+    ParsedRecipe.pouring_steps_count = steps.size();
+
+    for (int i = 0; i < ParsedRecipe.pouring_steps_count; i++) {
+        ParsedRecipe.pouring_steps[i].step = steps[i]["step"] | i;
+        ParsedRecipe.pouring_steps[i].water_g = steps[i]["water_g"] | 0.0;
+        ParsedRecipe.pouring_steps[i].pour_time_s = steps[i]["pour_time_s"] | 0;
+        ParsedRecipe.pouring_steps[i].wait_time_s = steps[i]["wait_time_s"] | 0;
+        ParsedRecipe.pouring_steps[i].bloom_time_s = steps[i]["bloom_time_s"] | 0;
+        ParsedRecipe.pouring_steps[i].technique = steps[i]["technique"] | "";
+    }
+}
+
+RecipeInfo HttpConnectionManager::getRecipeParsing() {
+    return this->ParsedRecipe;
 }

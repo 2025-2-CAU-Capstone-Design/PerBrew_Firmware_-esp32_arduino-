@@ -15,4 +15,6 @@ public:
 private:
     AccelStepper stepper_;
     bool directionCW_;                  // true = 시계 방향
+    const int rearrangingMotorStepPin = 16;//pin::RearraingMotorStep;
+    const int rearrangingMotorDirPin = 4;//pin::RearraingMotorDir;
 };

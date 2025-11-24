@@ -2,7 +2,7 @@
 
 PouringSectionDriver::PouringSectionDriver()
     : rotationStepper_(AccelStepper::DRIVER, pin::PouringRotationStep, pin::PouringRotationDir),
-      tiltStepper_(AccelStepper::DRIVER, pin::PouringAngleStep, pin::PouringAngleDir) {
+      tiltStepper_(AccelStepper::DRIVER, pin::PouringAngleDir, pin::PouringAngleStep) {
 }
 
 PouringSectionDriver::~PouringSectionDriver() {
@@ -21,15 +21,20 @@ bool PouringSectionDriver::begin() {
     pinMode(PumpPin, OUTPUT);
     analogWrite(PumpPin, 0);
     
-    // 스텝 모터 설정
+    // 스텝 모터 설정(푸어링)
     rotationStepper_.setMaxSpeed(PouringConfig::DEFAULT_STEP_SPEED);
     rotationStepper_.setAcceleration(PouringConfig::DEFAULT_ACCELERATION);
-    
+    rotationStepper_.setCurrentPosition(0);
+
+    // 스텝 모터 설정(틸트)
     tiltStepper_.setMaxSpeed(PouringConfig::DEFAULT_STEP_SPEED);
     tiltStepper_.setAcceleration(PouringConfig::DEFAULT_ACCELERATION);
-    
+    while(digitalRead(PouringTiltDirPin) == HIGH) {
+        tiltStepper_.runSpeed();
+    }
+    tiltStepper_.setCurrentPosition(0);
     // 초기화 완료 대기
-    delay(100);
+    delay(1000);
     
     // 초기 거리 측정으로 센서 동작 확인
     long testDistance = measureDistanceCM();
@@ -118,16 +123,18 @@ void PouringSectionDriver::stopRotation() {
 void PouringSectionDriver::tiltNozzle(long distanceCM) {
     if (distanceCM < PouringConfig::MIN_DISTANCE_CM || distanceCM > PouringConfig::MAX_DISTANCE_CM) {
         setError(PouringError::DISTANCE_OUT_OF_RANGE);
+        Serial.println("Tilt distance out of range\n");
         return;
     }
     //값 보정 필요
-    float mappedAngle = map(distanceCM, 2, 20, 0, 45);
+    float mappedAngle = map(distanceCM, 5, 10, 0, 45);
     tiltNozzleToAngle(mappedAngle);
 }
 
 void PouringSectionDriver::tiltNozzleToAngle(float degrees) {
     // 1.8도 스텝 모터 기준
     constexpr float STEPS_PER_DEGREE = 200.0f / 360.0f;
+    Serial.println("Tilting to angle: " + String(degrees) + " degrees");
     long targetSteps = lround(degrees * STEPS_PER_DEGREE);
 
     tiltStepper_.moveTo(targetSteps);
@@ -181,7 +188,7 @@ void PouringSectionDriver::setError(PouringError error) {
     status_.lastError = error;
     if (error != PouringError::NONE) {
         Serial.print("PouringSection Error: ");
-        Serial.println(getErrorString());
+        Serial.println(static_cast<int>(error));
     }
 }
 

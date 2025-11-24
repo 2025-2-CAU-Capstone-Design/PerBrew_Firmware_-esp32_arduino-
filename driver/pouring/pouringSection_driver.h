@@ -82,7 +82,12 @@ class PouringSectionDriver {
         const int TrigPin = pin::UltrasonicTrig;
         const int EchoPin = pin::UltrasonicEcho;
         const int PumpPin = pin::PumpPWM;
-        
+        const int PouringRotationStepPin = pin::PouringRotationStep;
+        const int PouringRotationDirPin = pin::PouringRotationDir;
+        const int PouringTiltStepPin = pin::PouringAngleStep;
+        const int PouringTiltDirPin = pin::PouringAngleDir;
+
+
         // 스텝 모터 객체
         AccelStepper rotationStepper_;
         AccelStepper tiltStepper_;

@@ -1,20 +1,19 @@
+#pragma once
 /*
     1. WIFI 모드
+    - websocket 통신
+    - json 파싱
+    - queue producer
 */
 
 #pragma once
 #include <Arduino.h>
+#include <./data_format.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <WebSocketsClient.h> 
 #include "boot.h"
-// 전송할 메시지는 각 드라이버에서 정의, 전송 형식은 JSON으로
 
-enum class APIType {
-    COMMAND,
-    RETURN_STATUS,
-    ERROR_REPORT,
-};
 
 class HttpConnectionManager {
 public:
@@ -38,38 +37,29 @@ public:
     // 연결 종료
     void disconnect();
 
-    void setStaticJsonDoc(StaticJsonDocument<4096>& doc) {
-        jsonDoc = doc;
-    };
-
-    StaticJsonDocument<4096> getStaticJsonDoc() {
-        return jsonDoc;
-    };
-
     void setLastReceivedMessage(const String& message) {
         lastReceivedMessage = message;
     };
 
-    String getLastReceivedMessage() const {
-        return lastReceivedMessage;
+    // 마지막 메시지를 반환하고 초기화 (move semantics)
+    String getLastReceivedMessage() {
+        String temp = lastReceivedMessage;
+        lastReceivedMessage = "";
+        return temp;
     };
-
-    void setLastReceivedCommand(const String& command) {
-        lastReceivedCommand = command;
-    };
-    String getLastReceivedCommand() const {
-        return lastReceivedCommand;
-    };
-
+    
+    void setRecipeParsing(String *recipeJson);
+    RecipeInfo getRecipeParsing();
+    
 private:
     WebSocketsClient wsClient;
     String serverUrl;
     uint16_t serverPort;
     StaticJsonDocument<4096> jsonDoc;
     String lastReceivedMessage;
-    String lastReceivedCommand;
+    RecipeInfo ParsedRecipe;
     bool connected;
-    
+
     void (*messageCallback)(String message) = nullptr;
     
     // WebSocket 이벤트 핸들러 (static)

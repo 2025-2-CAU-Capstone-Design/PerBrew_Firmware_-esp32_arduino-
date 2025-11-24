@@ -7,12 +7,13 @@ namespace {
     constexpr int CLICK_MIN = 0;
     constexpr int CLICK_MAX = 240;
 
-    //실측 필요(포텐셜미터 ADC) , 아두이노 기준에 맞춤(0~1023)
-    // ADC 17 = 1click
+    // 실측 필요(포텐셜미터 ADC). ESP32에서 analogReadResolution(12)를 사용하므로 0..4095 범위
+    // 이전에 10bit(0..1023)로 가정한 값이 있어 매핑이 틀어지는 문제가 있었음
+    // ADC 17 = 1click (예시)
     //constexpr int ADC_MIN  = 1530;
     //constexpr int ADC_MAX  = 4080;
     constexpr int ADC_MIN  = 0;
-    constexpr int ADC_MAX  = 1023;
+    constexpr int ADC_MAX  = 4095;
 
 
     //그라인더 관련 상수
@@ -47,6 +48,8 @@ void GrinderDriver::begin() {
 
     stepper_.setMaxSpeed(kMaxSpeed_);
     stepper_.setAcceleration(kAcceleration_);
+    // Ensure step pulse width is sufficient for motor drivers that require longer pulse
+    stepper_.setMinPulseWidth(5);
 
     currentClicks_ = adcToClicks(readADCValue());
     grindingState_ = GrinderState::IDLE;
@@ -57,26 +60,75 @@ int GrinderDriver::getCurrentClicks() {
     return currentClicks_;
 }
 
-void GrinderDriver::setClicks(int target) {
+// testSetClicks removed — use diagnostic helpers or direct manual tests instead
+
+bool GrinderDriver::setClicks(int target) {
     long targetClicks = constrain(target, CLICK_MIN, CLICK_MAX);
     int current = getCurrentClicks();
 
-    if (abs(targetClicks - current) < 1) return; // 이미 목표 위치
+    // If already at target (difference less than 1 click), nothing to do
+    long diff = targetClicks - current;
+    printf("Diff: %ld\n", diff);
+    if (labs(diff) == 0) {
+        Serial.println("Already at target clicks, no movement required.");
+        return false; // 이미 목표 위치
+    }
 
     // 이동 방향 설정
+    Serial.print("Moving from " + String(current) + " to " + String(targetClicks) + " clicks.");
     int dir = (targetClicks > current) ? 1 : -1;
-    stepper_.setSpeed(dir * kMaxSpeed_ * 0.5); // 절반 속도로 이동
+    stepper_.setSpeed(dir * (kMaxSpeed_ * 0.25f));
+    // Iterative attempts: perform up to maxAttempts of open-loop move + ADC verification
+    const unsigned int maxAttempts = 3;
 
-    while (true) {
-        stepper_.runSpeed(); // 한 스텝 실행
-        int now = getCurrentClicks();
-        if ((dir > 0 && now >= targetClicks) ||
-            (dir < 0 && now <= targetClicks)) {
-            break; // 목표 도달
+    for (unsigned int attempt = 1; attempt <= maxAttempts; ++attempt) {
+        int nowClicks = getCurrentClicks();
+        long remaining = targetClicks - nowClicks;
+        if (remaining == 0) {
+            Serial.println("Already at target before attempt");
+            return true;
         }
+        int attemptDir = (remaining > 0) ? 1 : -1;
+        unsigned long stepsThisAttempt = (unsigned long)(labs(remaining) * (long)stepsPerClick_);
+
+        Serial.printf("Attempt %u/%u: remaining=%ld stepsThisAttempt=%lu\n", attempt, maxAttempts, remaining, stepsThisAttempt);
+
+        // set speed and perform open-loop step movement
+        stepper_.setSpeed(attemptDir * (kMaxSpeed_ * 0.25f));
+        unsigned long startTimeAttempt = millis();
+        unsigned long moved = 0;
+        while (moved < stepsThisAttempt) {
+            bool made = stepper_.runSpeed();
+            if (made) {
+                ++moved;
+                if ((moved & 0x3F) == 0) Serial.println("STEP GENERATED: total=" + String(moved));
+            }
+            delay(1);
+        }
+        stepper_.stop();
+
+        // Post-move verification: ADC moving average
+        const unsigned int N = filterWindow_ > 0 ? filterWindow_ : 5;
+        long sum = 0;
+        for (unsigned int i = 0; i < N; ++i) {
+            sum += (int)readADCValue();
+            delay(20);
+        }
+        int avgRaw = (int)(sum / N);
+        int finalClicks = adcToClicks(avgRaw);
+        Serial.printf("After attempt %u: avgRaw=%d finalClicks=%d target=%ld\n", attempt, avgRaw, finalClicks, targetClicks);
+
+        currentClicks_ = finalClicks;
+        if ((remaining > 0 && finalClicks >= targetClicks) || (remaining < 0 && finalClicks <= targetClicks)) {
+            Serial.println("Reached target after attempt");
+            return true;
+        }
+        delay(100);
     }
-    stepper_.stop();
-    currentClicks_ = getCurrentClicks(); 
+
+    Serial.println("All attempts exhausted, failed to reach target");
+    currentClicks_ = getCurrentClicks();
+    return false;
 }
  
 // === 전류센서 값 읽기 ===
@@ -147,14 +199,16 @@ void GrinderDriver::update() {
 
 int GrinderDriver::adcToClicks(int adc){
     float ratio = float(adc - ADC_MIN) / float(ADC_MAX - ADC_MIN);
+    //Serial.println("ADC Ratio: " + String(ratio));
     int clicks = int(lround(ratio * (CLICK_MAX - CLICK_MIN))) + CLICK_MIN;
     if (clicks < CLICK_MIN) clicks = CLICK_MIN;
     if (clicks > CLICK_MAX) clicks = CLICK_MAX;
     return clicks;
 }
 
+// ADC -> 클릭 수 변환, 안씀 (왜 만들었지..? 테스트용?)
 int GrinderDriver::clicksToADC(int clicks) {
-    float ratio = float(clicks - CLICK_MIN) / float(CLICK_MAX - CLICK_MIN);
+    float ratio = float(clicks - CLICK_MIN) / float(CLICK_MAX - CLICK_MIN); 
     int adc = int(lround(ADC_MIN + ratio * (ADC_MAX - ADC_MIN)));
     if (adc < ADC_MIN) adc = ADC_MIN;
     if (adc >= ADC_MAX) adc = ADC_MAX;
@@ -191,6 +245,7 @@ void GrinderDriver::handleCurrentMonitoring() {
         무부하 상태가 감지되면 stableIdleCount_ 증가
         stableIdleCount_가 STABLE_COUNT_THRESHOLD 이상이면 그라인딩 완료로 간주
     */
+
     if(lastCurrentReading_ <= IDLE_CURRENT_THRESHOLD){
         stableIdleCount_++;
         Serial.println("[Grinder] Low current detected, count: " + String(stableIdleCount_)); // 디버깅용 출력

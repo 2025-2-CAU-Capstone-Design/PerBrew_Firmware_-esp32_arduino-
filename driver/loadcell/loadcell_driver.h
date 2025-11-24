@@ -23,7 +23,8 @@ class LoadCellDriver {
 
 
         // 게인 설정 (다음 변환 사이클 이후 반영)
-        void setGain(uint8_t gain) { 
+        void setGain(uint8_t gain) {
+            currentWeight_ = 0.0f;
             gain_ = gain;
             scale_.set_gain(gain_); 
         };

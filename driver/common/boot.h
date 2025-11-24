@@ -4,9 +4,10 @@
 #include <WiFi.h>
 #include <BLEDevice.h>
 #include <nvs_flash.h>
+
 /*
     부팅 설정 관리 클래스
-    BootConfig
+    BootManager
     - 설정 파일을 Preferences에 저장
     - 저장 내용:
         1. 실행 모드 (BLE 모드 / WiFi 모드)
@@ -15,10 +16,9 @@
         4. 서버 주소 (기본값)
         5. 기타 key-value 설정*/
 
-enum class ConnectionMode{
-    BLE,
-    WIFI
-};
+#define BLE_MODE "BLE"
+#define WIFI_MODE "WIFI"
+
 
 
 class BootManager {
@@ -26,7 +26,7 @@ public:
     BootManager();
     
     // 부팅 시 자동으로 WiFi 연결 시도 -> 실패 시 BLE 모드
-    ConnectionMode begin();
+    String begin();
     
     // WiFi 관리
     void saveWIFICredentials(const String& ssid, const String& password);
@@ -36,14 +36,14 @@ public:
     void clearWiFiCredentials();
 
     // 현재 연결 모드 반환
-    ConnectionMode getCurrentMode() const;
+    String getCurrentMode() const;
 
     // 머신 ID 설정/조회
     String getMachineID();
 
 private:
     Preferences preferences;
-    ConnectionMode currentMode;
+    String currentMode;
     String machineID = "";
     
     // WiFi 연결 시도
