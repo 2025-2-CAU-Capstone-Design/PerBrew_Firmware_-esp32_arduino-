@@ -163,7 +163,10 @@ void BrewTask(void* pv) {
                 currentRecipe = newRecipe;
                 hasRecipe = true;
                 preRinseDone = false;  // 새 레시피가 오면 린싱 상태 초기화
-                Serial.println("[BREW] New recipe received from queue");
+                Serial.printf("[BREW] New recipe received from queue: temp=%dC, grind=%d, dose=%.1fg\n",
+                             currentRecipe.water_temperature_c,
+                             currentRecipe.grind_level,
+                             currentRecipe.dose_g);
             }
         }
 
