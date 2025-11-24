@@ -156,7 +156,16 @@ void BrewTask(void* pv) {
 
     while (true) {
 
-        // TODO: 여기서 gRecipeQueue를 체크해서 새 레시피가 오면 currentRecipe 갱신 + hasRecipe = true
+        // gRecipeQueue를 체크해서 새 레시피가 오면 currentRecipe 갱신 + hasRecipe = true
+        if (gRecipeQueue != nullptr) {
+            RecipeInfo newRecipe;
+            if (xQueueReceive(gRecipeQueue, &newRecipe, 0) == pdTRUE) {
+                currentRecipe = newRecipe;
+                hasRecipe = true;
+                preRinseDone = false;  // 새 레시피가 오면 린싱 상태 초기화
+                Serial.println("[BREW] New recipe received from queue");
+            }
+        }
 
         BrewStatus st = driver->status;
 
