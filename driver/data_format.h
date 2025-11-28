@@ -32,7 +32,6 @@ struct PouringStep {
     float water_g;             // 주수량 (그램)
     uint16_t pour_time_s;      // 주수 시간 (초)
     uint16_t wait_time_s;      // 대기 시간 (초) - step 0에서 사용
-    uint16_t bloom_time_s;     // 블룸 시간 (초) - step 1+ 에서 사용
     String technique;          // 주수 기법 (예: "center pour", "spiral outward")
 };
 
@@ -75,6 +74,7 @@ struct ConnectionContext {
     HttpConnectionManager* wifi;
     QueueHandle_t* messageQueue;
     QueueHandle_t* recipeQueue;
+    QueueHandle_t* sendQueue;
 };
 
 
@@ -82,3 +82,4 @@ struct ConnectionContext {
 extern DriverContext driver;
 extern QueueHandle_t gRecipeQueue;
 extern QueueHandle_t gCommandQueue;
+extern QueueHandle_t gSendQueue;

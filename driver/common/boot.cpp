@@ -20,7 +20,6 @@ String BootManager::begin() {
         Serial.println("[Boot] WiFi Connected");
     } else {
         // WiFi 실패 -> BLE 모드
-        startBLEMode();
         currentMode = BLE_MODE;
         Serial.println("[Boot] BLE Mode Started");
     }
@@ -53,11 +52,6 @@ String BootManager::begin() {
     }
     preferences.end();
     return true;
-}
-
-void BootManager::startBLEMode() {
-    BLEDevice::init("PerBrew");
-    // BLE 서버 설정은 별도 모듈에서 처리
 }
 
 void BootManager::saveWIFICredentials(const String& ssid, const String& password) {

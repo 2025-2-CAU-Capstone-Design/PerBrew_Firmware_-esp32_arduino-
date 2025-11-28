@@ -2,9 +2,9 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
-#include <BLEDevice.h>
 #include <nvs_flash.h>
-
+#include "../driver/data_format.h"
+    
 /*
     부팅 설정 관리 클래스
     BootManager
@@ -15,9 +15,6 @@
         3. 연결된 사용자 ID
         4. 서버 주소 (기본값)
         5. 기타 key-value 설정*/
-
-#define BLE_MODE "BLE"
-#define WIFI_MODE "WIFI"
 
 
 
@@ -48,9 +45,6 @@ private:
     
     // WiFi 연결 시도
     bool tryConnectWiFi();
-    
-    // BLE 모드 시작
-    void startBLEMode();
 
     // 머신 ID 생성
     String generateMachineID();

@@ -190,7 +190,6 @@ void HttpConnectionManager::setRecipeParsing(String *recipeJson) {
         ParsedRecipe.pouring_steps[i].water_g = steps[i]["water_g"] | 0.0;
         ParsedRecipe.pouring_steps[i].pour_time_s = steps[i]["pour_time_s"] | 0;
         ParsedRecipe.pouring_steps[i].wait_time_s = steps[i]["wait_time_s"] | 0;
-        ParsedRecipe.pouring_steps[i].bloom_time_s = steps[i]["bloom_time_s"] | 0;
         ParsedRecipe.pouring_steps[i].technique = steps[i]["technique"] | "";
     }
 }

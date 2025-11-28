@@ -48,7 +48,6 @@ void BLEConnectionManager::poll() {
 void BLEConnectionManager::stop() {
     Serial.println("[BLE] Stopping BLE...");
     NimBLEDevice::stopAdvertising();
-    NimBLEDevice::deinit(true);
 
     connected = false;
     // dangling 방지
