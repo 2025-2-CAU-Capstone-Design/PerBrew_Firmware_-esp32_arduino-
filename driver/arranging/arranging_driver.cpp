@@ -47,3 +47,8 @@ void ArrangingDriver::move(long steps) {
 void ArrangingDriver::update() {
     stepper_.run();  // non-blocking 실행
 }
+
+void ArrangingDriver::stop() {
+    stepper_.stop();
+    Serial.println("ArrangingDriver stopped");
+}

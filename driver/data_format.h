@@ -1,22 +1,26 @@
 #pragma once
-#include<Arduino.h>
-#include <../driver/arranging/arranging_driver.h>
-#include <../driver/grinder/grinder_driver.h>
-#include <../driver/heater/heater_driver.h>
-#include <../driver/loadcell/loadcell_driver.h>
-#include <../driver/pouring/pouringSection_driver.h>
-#include <../driver/common/WIFIconnection.h>
-#include <../driver/common/BLEconnection.h>
-#include <../driver/common/boot.h>
-
-#include <ArduinoJson.h>
+#include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
-#include <freertos/event_groups.h>
 #include <freertos/semphr.h>
 
-// 브루 상태 열거형
+
+class ArrangingDriver;
+class GrinderDriver;
+class HeaterDriver;
+class LoadCellDriver;
+class PouringSectionDriver;
+
+class BLEConnectionManager;
+class HttpConnectionManager;
+class BootManager;
+
+// ===== CONSTANTS =====
+#define BLE_MODE "BLE"
+#define WIFI_MODE "WIFI"
+
+// ===== Brew Status =====
 enum class BrewStatus {
     IDLE,
     BREWSTART,
@@ -26,7 +30,9 @@ enum class BrewStatus {
     POURING,
     STOP,
 };
-// 각 푸어링 단계 정보
+
+
+// ===== Pouring Step =====
 struct PouringStep {
     uint8_t step;              // 단계 번호
     float water_g;             // 주수량 (그램)
@@ -52,7 +58,8 @@ struct RecipeData {
     RecipeInfo recipe_info;
 };
 
-// 드라이버 컨텍스트
+// ===== Driver Context =====
+// (Task 간 공유되는 하드웨어 핸들)
 struct DriverContext {
     ArrangingDriver* arranging;
     PouringSectionDriver* pouring;
@@ -60,26 +67,34 @@ struct DriverContext {
     HeaterDriver* heater;
     LoadCellDriver* loadcell;
 
-    QueueHandle_t* queue;
+    TaskHandle_t loadCellTaskHandle;
 
-    RecipeInfo recipe;
-    BrewStatus status;
+    String machineID;              // 메시지 prefix 용
+
+    RecipeInfo recipe;             // 현재 사용되는 레시피
+    BrewStatus status;             // BrewTask 상태
 };
 
+enum class SendMode {
+    NONE,       // 아무것도 보내지 않음
+    WEIGHT_ONLY, // 사용자 원두 측정 모드
+    BREWING     // 온도 + 무게 보내기
+};
 
 // 연결 컨텍스트
 struct ConnectionContext {
     BLEConnectionManager* ble;
-    BootManager* boot;
     HttpConnectionManager* wifi;
-    QueueHandle_t* messageQueue;
-    QueueHandle_t* recipeQueue;
-    QueueHandle_t* sendQueue;
+    BootManager* boot;
+
+    TaskHandle_t supervisorTask;
+    TaskHandle_t bleTask;
+    TaskHandle_t wifiTask;
 };
 
-
-
-extern DriverContext driver;
+// ===== Global Queues =====
 extern QueueHandle_t gRecipeQueue;
 extern QueueHandle_t gCommandQueue;
 extern QueueHandle_t gSendQueue;
+
+extern DriverContext driver;
