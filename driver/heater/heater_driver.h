@@ -37,6 +37,10 @@ class HeaterDriver {
         double getCurrentTemperature() const { return currentTemperature_; }
         double getTargetTemperature() const { return targetTemperature_; }
         int getCurrentPWM() const { return lastPWMOutput_; }
+        long getHeatingDuration() const { 
+            if (heaterState_ == HeaterState::IDLE) return 0;
+            return millis() - heatingStartTime_; 
+        }
 
     private:
         // == 상태 변수 ==

@@ -69,5 +69,5 @@ class LoadCellDriver {
         float currentWeight_{0.0f};
         long offset_{0};
         uint8_t gain_{128};
-        uint8_t defaultSamples_{10};
+        uint8_t defaultSamples_ = 10;
 };
