@@ -70,42 +70,52 @@ private:
     NimBLECharacteristic* txChar;
 
     // 내부 콜백 클래스들
-    class ServerCallbacks : public NimBLEServerCallbacks {
-    public:
-        explicit ServerCallbacks(BLEConnectionManager* parent)
-            : parent(parent) {}
+class ServerCallbacks : public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
+        Serial.printf("Client address: %s\n", connInfo.getAddress().toString().c_str());
+        pServer->updateConnParams(connInfo.getConnHandle(), 24, 48, 0, 180);
+    }
 
-        void onConnect(NimBLEServer* s);
-        void onDisconnect(NimBLEServer* s);
+    void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
+        Serial.printf("Client disconnected - start advertising\n");
+        NimBLEDevice::startAdvertising();
+    }
 
-    private:
-        BLEConnectionManager* parent;
-    };
+    void onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo) override {
+        Serial.printf("MTU updated: %u for connection ID: %u\n", MTU, connInfo.getConnHandle());
+    }
+} serverCallbacks;
 
     class RXCallbacks : public NimBLECharacteristicCallbacks {
     public:
-        explicit RXCallbacks(BLEConnectionManager* parent)
-            : parent(parent) {}
+        void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+        Serial.printf("%s : onRead(), value: %s\n",
+                      pCharacteristic->getUUID().toString().c_str(),
+                      pCharacteristic->getValue().c_str());
+        }
 
-        void onWrite(NimBLECharacteristic* c);
+        void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+            Serial.printf("%s : onWrite(), value: %s\n",
+                        pCharacteristic->getUUID().toString().c_str(),
+                        pCharacteristic->getValue().c_str());
+        }
 
-    private:
-        BLEConnectionManager* parent;
+        private:
+            BLEConnectionManager* parent;
     };
+    class CharacteristicCallbacks : public NimBLECharacteristicCallbacks {
+        void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+            Serial.printf("%s : onRead(), value: %s\n",
+                        pCharacteristic->getUUID().toString().c_str(),
+                        pCharacteristic->getValue().c_str());
+        }
 
-    // 콜백에서 부모 객체로 호출할 내부 핸들러
-    void handleConnect(NimBLEServer* s){
-        connected = true;
-        Serial.println("[BLE] Client connected");
-    };
-
-    void handleDisconnect(NimBLEServer* s){
-        connected = false;
-        Serial.println("[BLE] Client disconnected");
-        NimBLEDevice::getAdvertising()->start();
-    };
-
-    void handleRX(const std::string& value);
+        void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+            Serial.printf("%s : onWrite(), value: %s\n",
+                        pCharacteristic->getUUID().toString().c_str(),
+                        pCharacteristic->getValue().c_str());
+        }
+    } charCallbacks;
 
     // 콜백 객체 (new/delete 안 쓰고 멤버로 보관)
     ServerCallbacks serverCallbacks;

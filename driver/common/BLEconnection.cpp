@@ -17,11 +17,9 @@ void BLEConnectionManager::begin() {
     server->setCallbacks(&serverCallbacks);
 
     NimBLEService* service = server->createService(SERVICE_UUID);
-
-    // RX Characteristic 생성 - 두 가지 속성을 모두 지원하도록 설정
-    rxChar = service->createCharacteristic(
+    NimBLECharacteristic* rxChar = service->createCharacteristic(
         CHAR_RX_UUID,
-        NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::WRITE, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | 
     );
 
     rxChar->setCallbacks(&rxCallbacks);
@@ -85,17 +83,6 @@ void BLEConnectionManager::stop() {
     txChar = nullptr;
 }
 
-void BLEConnectionManager::ServerCallbacks::onConnect(NimBLEServer* s) {
-    if (parent) {
-        parent->handleConnect(s);
-    }
-}
-
-void BLEConnectionManager::ServerCallbacks::onDisconnect(NimBLEServer* s) {
-    if (parent) {
-        parent->handleDisconnect(s);
-    }
-}
 
 void BLEConnectionManager::RXCallbacks::onWrite(NimBLECharacteristic* c) {
     Serial.println("[BLE] onWrite callback triggered");  // 이 로그가 출력되는지 확인
