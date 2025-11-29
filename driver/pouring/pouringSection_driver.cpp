@@ -1,9 +1,10 @@
 #include "pouringSection_driver.h"
 
 PouringSectionDriver::PouringSectionDriver()
-    : rotationStepper_(AccelStepper::DRIVER, pin::PouringRotationStep, pin::PouringRotationDir),
-      tiltStepper_(AccelStepper::DRIVER, pin::PouringAngleDir, pin::PouringAngleStep) {
-}
+    : 
+    //rotationStepper_(AccelStepper::DRIVER, pin::PouringRotationStep, pin::PouringRotationDir)
+      tiltStepper_(AccelStepper::DRIVER, pin::PouringAngleStep, pin::PouringAngleDir) 
+    {}
 
 PouringSectionDriver::~PouringSectionDriver() {
     stopPump();
@@ -21,17 +22,23 @@ bool PouringSectionDriver::begin() {
     pinMode(PumpPin, OUTPUT);
     analogWrite(PumpPin, 0);
     
-    // 스텝 모터 설정(푸어링)
+    // 스텝 모터 설정(푸어링 -> 스탭모터 버전)
+    /*
     rotationStepper_.setMaxSpeed(PouringConfig::DEFAULT_STEP_SPEED);
     rotationStepper_.setAcceleration(PouringConfig::DEFAULT_ACCELERATION);
     rotationStepper_.setCurrentPosition(0);
+    */
+   // 회전 모터 dc모터로 변경
+    pinMode(PouringRotationPWM, OUTPUT);
+    pinMode(PouringRotationDir, OUTPUT);
+    analogWrite(PouringRotationPWM, 0);
+    digitalWrite(PouringRotationDir, LOW);
+    rotationRunning_ = false;
+
 
     // 스텝 모터 설정(틸트)
     tiltStepper_.setMaxSpeed(PouringConfig::DEFAULT_STEP_SPEED);
     tiltStepper_.setAcceleration(PouringConfig::DEFAULT_ACCELERATION);
-    while(digitalRead(PouringTiltDirPin) == HIGH) {
-        tiltStepper_.runSpeed();
-    }
     tiltStepper_.setCurrentPosition(0);
     // 초기화 완료 대기
     delay(1000);
@@ -80,12 +87,10 @@ long PouringSectionDriver::measureDistanceCM() {
 
 // === 스텝 모터 제어 함수 ===
 void PouringSectionDriver::setStepperSpeed(float speed) {
-    rotationStepper_.setMaxSpeed(speed);
     tiltStepper_.setMaxSpeed(speed);
 }
 
 void PouringSectionDriver::setStepperAcceleration(float acceleration) {
-    rotationStepper_.setAcceleration(acceleration);
     tiltStepper_.setAcceleration(acceleration);
 }
 
@@ -98,7 +103,7 @@ bool PouringSectionDriver::isObjectInRange(int minCM, int maxCM) {
 
 //============================================================================================================================================
 // === 노즐 회전 제어 ===
-
+/*
 void PouringSectionDriver::rotateNozzle(int steps, bool clockwise) {
     long targetPosition = rotationStepper_.currentPosition() + (clockwise ? steps : -steps);
     rotationStepper_.moveTo(targetPosition);
@@ -116,12 +121,33 @@ void PouringSectionDriver::rotateNozzleToAngle(float degrees) {
 void PouringSectionDriver::stopRotation() {
     rotationStepper_.stop();
     status_.isRotating = false;
+}*/
+void PouringSectionDriver::startRotation(bool clockwise, int pwmValue) {
+    pwmValue = constrain(pwmValue, 0, 255);
+    digitalWrite(this->PouringRotationPWM, clockwise ? HIGH : LOW);
+    analogWrite(this->PouringRotationDir, pwmValue);
+    this->rotationRunning_ = true;
+    status_.isRotating = rotationRunning_;
+
+    Serial.print("Rotation start: dir=");
+    Serial.print(clockwise ? "CW" : "CCW");
+    Serial.print(", PWM=");
+    Serial.println(pwmValue);
 }
+
+void PouringSectionDriver::stopRotation() {
+    analogWrite(this->PouringRotationDir    , 0);
+    this->rotationRunning_ = false;
+    status_.isRotating = false;
+    Serial.println("Rotation stopped");
+}
+
 
 //============================================================================================================================================
 // === 노즐 틸트 제어 ===
 void PouringSectionDriver::tiltNozzle(long distanceCM) {
-    if (distanceCM < PouringConfig::MIN_DISTANCE_CM || distanceCM > PouringConfig::MAX_DISTANCE_CM) {
+    if (distanceCM < PouringConfig::MIN_DISTANCE_CM || 
+        distanceCM > PouringConfig::MAX_DISTANCE_CM) {
         setError(PouringError::DISTANCE_OUT_OF_RANGE);
         Serial.println("Tilt distance out of range\n");
         return;
@@ -134,6 +160,7 @@ void PouringSectionDriver::tiltNozzle(long distanceCM) {
 void PouringSectionDriver::tiltNozzleToAngle(float degrees) {
     // 1.8도 스텝 모터 기준
     constexpr float STEPS_PER_DEGREE = 200.0f / 360.0f;
+    
     Serial.println("Tilting to angle: " + String(degrees) + " degrees");
     long targetSteps = lround(degrees * STEPS_PER_DEGREE);
 
@@ -198,13 +225,13 @@ bool PouringSectionDriver::validateDistance(long distance) {
 }
 
 void PouringSectionDriver::updateSteppers() {
-    rotationStepper_.run();
+    //rotationStepper_.run();
     tiltStepper_.run();
 }
 
 void PouringSectionDriver::update() {
     updateSteppers();    
     // 상태 업데이트
-    status_.isRotating = rotationStepper_.isRunning();
+    //status_.isRotating = rotationStepper_.isRunning();
     status_.isTilting = tiltStepper_.isRunning();
 }

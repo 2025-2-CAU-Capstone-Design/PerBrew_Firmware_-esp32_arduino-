@@ -69,7 +69,7 @@ struct DriverContext {
 
     TaskHandle_t loadCellTaskHandle;
 
-    String machineID;              // 메시지 prefix 용
+    String machine_id;              // 메시지 prefix 용
 
     RecipeInfo recipe;             // 현재 사용되는 레시피
     BrewStatus status;             // BrewTask 상태
@@ -86,6 +86,8 @@ struct ConnectionContext {
     BLEConnectionManager* ble;
     HttpConnectionManager* wifi;
     BootManager* boot;
+    String machine_id;
+    String userEmail;
 
     TaskHandle_t supervisorTask;
     TaskHandle_t bleTask;

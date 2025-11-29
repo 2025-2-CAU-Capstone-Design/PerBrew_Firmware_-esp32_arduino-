@@ -10,12 +10,22 @@
   참고 
     https://docs.espressif.com/projects/arduino-esp32/en/latest/tutorials/preferences.html
 */
-
+BootManager::BootManager(){}
 String BootManager::begin() {
     preferences.begin("boot", false);
-    
+    bool isMachineId = preferences.isKey("machine_id");
+    if(!isMachineId){
+        machine_id = generatemachine_id();
+        preferences.putString("machine_id", machine_id);
+        Serial.printf("[Boot] Generated Machine ID: %s\n", machine_id.c_str());
+    } else {
+        machine_id = preferences.getString("machine_id", "");
+        Serial.printf("[Boot] Loaded Machine ID: %s\n", machine_id.c_str());
+    }
+    bool doesExist = preferences.isKey("ssid");
+    preferences.end();
     // WiFi 연결 시도
-    if (tryConnectWiFi()) {
+    if (doesExist) {
         currentMode = WIFI_MODE;
         Serial.println("[Boot] WiFi Connected");
     } else {
@@ -27,7 +37,8 @@ String BootManager::begin() {
     return currentMode;
 }
 
- bool BootManager::tryConnectWiFi() {
+// not used functions : supervisor에서 직접 접근
+bool BootManager::tryConnectWiFi() {
     preferences.begin("boot", false);
     bool doesExist = preferences.isKey("ssid");
     if(!doesExist) {
@@ -54,14 +65,17 @@ String BootManager::begin() {
     return true;
 }
 
-void BootManager::saveWIFICredentials(const String& ssid, const String& password) {
+void BootManager::saveWIFICredentials(const String& ssid, const String& password, const String& userEmail) {
     preferences.begin("boot", false);
     preferences.putString("ssid", ssid);
     preferences.putString("password", password);
+    preferences.putString("userEmail", userEmail);
     preferences.end();
     Serial.printf("[Boot] WiFi Saved: %s\n", ssid.c_str());
 }
 
+
+// not used functions : supervisor에서 직접 접근
 String BootManager::getWiFiSSID() {
     preferences.begin("boot", true);
     String ssid = preferences.getString("ssid", "");
@@ -74,6 +88,7 @@ String BootManager::getWiFiSSID() {
     return ssid;
 }
 
+// not used functions : supervisor에서 직접 접근
 String BootManager::getWiFiPassword() {
     preferences.begin("boot", true);
     String password = preferences.getString("password", "");
@@ -86,6 +101,20 @@ String BootManager::getWiFiPassword() {
     return password;
 }
 
+String BootManager::getUserEmail() {
+    preferences.begin("boot", true);
+    String email = preferences.getString("userEmail", "");
+    if(email=="") {
+        Serial.println("[Boot] No User Email stored");
+        preferences.end();
+        return "";
+    }
+    preferences.end();
+    return email;
+}
+
+
+// not used functions : 초기화 코드 반영 안되었음.
 void BootManager::clearWiFiCredentials() {
     preferences.begin("boot", false);
     preferences.remove("ssid");
@@ -98,11 +127,11 @@ String BootManager::getCurrentMode() const {
     return currentMode;
 }
 
-String BootManager::getMachineID() {
-    return machineID;
+String BootManager::getmachine_id() {
+    return machine_id;
 }
 
-String BootManager::generateMachineID() {
+String BootManager::generatemachine_id() {
     String id = "";
     const char* chars = "0123456789ABCDEF";
     for (int i = 0; i < 12; i++) {

@@ -15,9 +15,9 @@ extern SharedState   gShared;
 
 static constexpr uint32_t RINSE_PUMP_PWM      = 180;    // 린싱 펌프 세기
 static constexpr uint32_t GRIND_MAX_MS        = 12000;  // 최대 분쇄 시간
-static constexpr float    POUR_TARGET_EPSILON = 0.5f; /*  */  // 목표 수량 허용 오차(g)
+static constexpr float    POUR_TARGET_EPSILON = 0.5f;   // 목표 수량 허용 오차(g)
 
-
+// 현재 무게 읽기
 static float readSharedWeight() {
     float w = 0.0f;
     if (xSemaphoreTake(gShared.mutex, portMAX_DELAY) == pdTRUE) {
@@ -47,7 +47,7 @@ static bool isTempStable() {
 
 static void sendBrewStatus(DriverContext* driver, const char* status) {
     StaticJsonDocument<128> doc;
-    doc["machineID"] = driver->machineID;
+    doc["machine_id"] = driver->machine_id;
     doc["type"]      = "BREW_STATUS";
     doc["status"]    = status;
 
@@ -106,22 +106,40 @@ void runBrew(DriverContext* driver, RecipeInfo& recipe) {
     vTaskResume(driver->loadCellTaskHandle);
     sendBrewStatus(driver, "POURING");
     vTaskDelay(200 / portTICK_PERIOD_MS);
-    float baseWeight = readSharedWeight();
+    float baseWeight = readSharedWeight();          // - 값 (ex -1000.0g)
     for (uint8_t i = 0; i < recipe.pouring_steps_count; ++i) {
         auto& step = recipe.pouring_steps[i];
         vTaskDelay(200 / portTICK_PERIOD_MS);
 
         // 펌프 ON (PWM 값 조정 필요)
+        float w = readSharedWeight();               // - 값 (-800.0g)
         driver->pouring->startPump(200);
+
+        // 틸트 제어를 위한 타이머 초기화
+        unsigned long lastTiltUpdate = 0;
+        const unsigned long TILT_INTERVAL_MS = 500;
 
         // 목표 수량까지 로드셀 모니터링
         while (true) {
-            float w = readSharedWeight();
-            float diff = w - baseWeight;
+            driver->pouring->update();
+
+            unsigned long now = millis();
+            if (now - lastTiltUpdate >= TILT_INTERVAL_MS) {
+                long dist = driver->pouring->measureDistanceCM();
+                // 유효한 거리값이면 틸트 조절
+                if (dist > 0) {
+                    driver->pouring->tiltNozzle(dist);
+                }
+                lastTiltUpdate = now;
+            }
+
+            float diff = w - baseWeight;                // 음수 값 (200.0g)
+            diff *= -1.0f;                             
             if (diff >= step.water_g - POUR_TARGET_EPSILON) {
+                driver->pouring->stopPump();
                 break;
             }
-            vTaskDelay(50 / portTICK_PERIOD_MS);
+            vTaskDelay(1);
         }
         driver->pouring->stopPump();
         vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -193,7 +211,7 @@ void BrewTask(void* pv) {
             driver->heater->startHeating(currentRecipe.water_temperature_c);
             driver->status = BrewStatus::HEATING;
             sendBrewStatus(driver, "HEATING");
-            setSendMode(SendMode::WEIGHT_ONLY);
+            setSendMode(SendMode::BREWING);
             break;
 
         case BrewStatus::HEATING:
@@ -222,12 +240,16 @@ void BrewTask(void* pv) {
             setSendMode(SendMode::BREWING);
             runBrew(driver, currentRecipe); 
             driver->status = BrewStatus::IDLE;
+            stopAll(driver); 
             break;
 
         case BrewStatus::STOP:
             setSendMode(SendMode::NONE);
             stopAll(driver);
             driver->status = BrewStatus::IDLE;
+            StaticJsonDocument<256> doc;
+            doc["machine_id"] = driver->machine_id;
+            doc["type"] = "BREW_DONE";
             break;
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);

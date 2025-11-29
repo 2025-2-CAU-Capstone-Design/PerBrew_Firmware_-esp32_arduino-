@@ -11,8 +11,8 @@
 // 1. 포트 확인: FastAPI 기본은 8000입니다. (uvicorn 실행 시 포트 확인)
 // 2. 경로 확인: /ws/machine/{머신ID} 형식이어야 합니다.
 /*
-    String machineId = "ESP32_001"; // 실제 머신 ID 변수 사용
-    String url = "/ws/machine/" + machineId;
+    String machine_id = "ESP32_001"; // 실제 머신 ID 변수 사용
+    String url = "/ws/machine/" + machine_id;
     wsClient.begin(serverIP, 8000, url); 
 */
 
@@ -39,6 +39,17 @@ static void startWifiTask(ConnectionContext* ctx) {
     }
 }
 
+static void stopWifiTask(ConnectionContext* ctx) {
+    if (ctx->wifiTask != nullptr) {
+        Serial.println("[SUP] Stopping WIFI task...");
+        vTaskDelete(ctx->wifiTask);
+        ctx->wifiTask = nullptr;
+                WiFi.disconnect(true); 
+        WiFi.mode(WIFI_OFF);
+        Serial.println("[SUP] WIFI task stopped & Radio OFF");
+    }
+}
+
 void BleConnectionTask(void* pv) {
     const byte maxRetry = 5;
     byte currentTry = 0;
@@ -52,9 +63,11 @@ void BleConnectionTask(void* pv) {
     ble->begin();
 
     while(true) {
-
+        ble->poll();
         if (ble->hasReceivedCredentials() && ble->isConnected()) {
             if (currentTry == 0) {
+                Serial.println("[BLE Task] Credentials received & Device connected.");
+                Serial.println("[BLE Task] Sending 'WiFi_try' to App and starting WiFi connection...");
                 ble->sendMessage("WiFi_try");          // 앱에게 연결 시도 알림
                 WiFi.mode(WIFI_STA);
                 WiFi.begin(ble->getSSID().c_str(), 
@@ -72,7 +85,7 @@ void BleConnectionTask(void* pv) {
                 
                 ble->sendMessage("WiFi_connected");
 
-                bootManager->saveWIFICredentials(ble->getSSID(), ble->getPassword());
+                bootManager->saveWIFICredentials(ble->getSSID(), ble->getPassword(), ble->getUserEmail());
                 if (ctx->supervisorTask != nullptr) {
                     xTaskNotify(ctx->supervisorTask, WIFI_EVT_PROVISIONED, eSetBits);
                 }
@@ -87,6 +100,13 @@ void BleConnectionTask(void* pv) {
                 ble->sendMessage("WiFi_fail");
                 ble->clearReceivedCredentials();
                 currentTry = 0;
+            }
+        }
+        if (ble->isConnected() && !ble->hasReceivedCredentials()) {
+            static unsigned long lastConnectedCheck = 0;
+            if (millis() - lastConnectedCheck > 3000) {  // 3초마다 상태 확인
+                Serial.println("[BLE Task] Connected but waiting for credentials...");
+                lastConnectedCheck = millis();
             }
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -106,9 +126,9 @@ void BleConnectionTask(void* pv) {
 void WIFIConnectionTask(void* pv) {
     ConnectionContext* ctx  = (ConnectionContext*)pv;
     HttpConnectionManager* wifi = ctx->wifi;
-    String serverIP = "192.168.1.1";
+    String serverIP = "192.168.56.1";
     
-    wifi -> begin(serverIP, 8080);
+    wifi -> begin(serverIP, 8000, ctx->machine_id, ctx->userEmail);
     while(true) {
         
         if(!wifi -> isConnected()) {
@@ -167,16 +187,18 @@ void ConnectionSupervisorTask(void* pv) {
             if (notified & WIFI_EVT_PROVISIONED) {
                 Serial.println("[SUP] WiFi provisioned by BLE, starting WiFi task");
                 startWifiTask(ctx);
+                wifiDeadCount = 0;
             }
         }
 
         // 3) WiFi 상태 체크 → 오래 죽어 있으면 BLE 재시작
-        if (ctx->wifi != nullptr) {
+        if (ctx->wifiTask != nullptr && ctx->wifi != nullptr){
             if (!ctx->wifi->isConnected()) {
                 wifiDeadCount++;
                 Serial.printf("[SUP] WiFi disconnected (%d)\n", wifiDeadCount);
                 if (wifiDeadCount >= WIFI_MAX_DEAD_CHECK) {
                     Serial.println("[SUP] WiFi seems dead, restarting BLE provisioning");
+                    stopWifiTask(ctx);
                     startBleTask(ctx);
                     wifiDeadCount = 0;
                 }

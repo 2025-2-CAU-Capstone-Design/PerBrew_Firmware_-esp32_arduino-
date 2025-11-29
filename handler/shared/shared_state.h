@@ -5,6 +5,8 @@ struct SharedState {
     float currentWeight;
     float currentTemp;
     bool tempStable;
+    String machine_id;
+    String userEmail;
     SendMode currentSendMode;
     SemaphoreHandle_t mutex;
 };

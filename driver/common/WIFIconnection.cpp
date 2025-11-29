@@ -4,25 +4,51 @@
 HttpConnectionManager* HttpConnectionManager::instance = nullptr;
 
 HttpConnectionManager::HttpConnectionManager() 
-    : connected(false), serverPort(8080) {
+    : connected(false), serverPort(8000) {
     instance = this;  // static 포인터에 현재 객체 저장
 }
 
-bool HttpConnectionManager::begin(const String& serverIP, uint16_t port) {
+bool HttpConnectionManager::begin(const String& serverIP, uint16_t port, String machine_id, String userEmail) {
     // WiFi 연결 확인
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[WIFI] WiFi not connected!");
         return false;
     }
-    
     serverUrl = serverIP;
     serverPort = port;
+    HTTPClient http;
+    String registerUrl = "http://" + serverIP + ":" + String(port) + "/machine/register" + machine_id; 
+    Serial.printf("[WIFI] Registering machine at: %s\n", registerUrl.c_str());
     
+    http.begin(registerUrl);
+    http.addHeader("Content-Type", "application/json");
+
     // WebSocket 이벤트 핸들러 등록
     wsClient.onEvent(webSocketEvent);
-    
+    StaticJsonDocument<200> doc;
+    doc["machine_id"] = machine_id;
+    doc["user_email"] = userEmail;
+    String requestBody;
+    serializeJson(doc, requestBody);
+    int httpResponse = http.POST(requestBody);
+    bool registrationSucess =false;
+    if(httpResponse > 0) {
+        String response = http.getString();
+        Serial.printf("[WIFI] HTTP Response code: %d\n", httpResponse);
+        Serial.println("[WIFI] Response: " + response);
+        
+        // 200 OK 또는 201 Created 등 성공 코드 확인
+        if (httpResponse == 200 || httpResponse == 201) {
+            registrationSucess = true;
+        }
+    } else {
+        Serial.printf("[WIFI] Error on sending POST: %s\n", http.errorToString(httpResponse).c_str());
+    }   
+    http.end();
+    if(!registrationSucess) return false;
     // WebSocket 연결 시작
-    wsClient.begin(serverUrl, serverPort, "/ws");
+    String url = "/ws/machine" + machine_id;
+    wsClient.begin(serverUrl, serverPort,url.c_str());
     
     // 재연결 설정
     wsClient.setReconnectInterval(5000);  // 5초마다 재연결 시도

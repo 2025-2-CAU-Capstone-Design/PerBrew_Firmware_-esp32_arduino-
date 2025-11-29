@@ -26,9 +26,10 @@ public:
     String begin();
     
     // WiFi 관리
-    void saveWIFICredentials(const String& ssid, const String& password);
+    void saveWIFICredentials(const String& ssid, const String& password, const String& userEmail);
     String getWiFiSSID();
     String getWiFiPassword();
+    String getUserEmail();
     // WiFi 자격증명 삭제
     void clearWiFiCredentials();
 
@@ -36,16 +37,16 @@ public:
     String getCurrentMode() const;
 
     // 머신 ID 설정/조회
-    String getMachineID();
+    String getmachine_id();
 
 private:
     Preferences preferences;
     String currentMode;
-    String machineID = "";
+    String machine_id = "";
     
     // WiFi 연결 시도
     bool tryConnectWiFi();
 
     // 머신 ID 생성
-    String generateMachineID();
+    String generatemachine_id();
 };

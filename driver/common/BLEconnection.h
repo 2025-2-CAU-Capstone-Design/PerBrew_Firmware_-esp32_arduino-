@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <ArduinoJson.h>
 
 
 class BLEConnectionManager {
@@ -43,6 +44,9 @@ public:
     String getPassword() const {
         return receivedPassword;
     }
+    String getUserEmail() const {
+        return userEmail;
+    }
 
     // BLE 끄기
     void stop();
@@ -53,6 +57,7 @@ private:
 
     String receivedSSID;
     String receivedPassword;
+    String userEmail;
 
     // UUID
     const char* SERVICE_UUID = "12345678-0000-0000-0000-000000000000";
@@ -60,6 +65,7 @@ private:
     const char* CHAR_TX_UUID = "12345678-2222-0000-0000-000000000000";
 
     NimBLEServer* server;
+    NimBLEAdvertising* ad; 
     NimBLECharacteristic* rxChar;
     NimBLECharacteristic* txChar;
 
@@ -92,10 +98,13 @@ private:
         connected = true;
         Serial.println("[BLE] Client connected");
     };
+
     void handleDisconnect(NimBLEServer* s){
         connected = false;
         Serial.println("[BLE] Client disconnected");
+        NimBLEDevice::getAdvertising()->start();
     };
+
     void handleRX(const std::string& value);
 
     // 콜백 객체 (new/delete 안 쓰고 멤버로 보관)

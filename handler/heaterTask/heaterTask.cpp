@@ -42,7 +42,7 @@ void HeaterTask(void* pv) {
         
         // JSON 생성
         StaticJsonDocument<256> doc;
-        doc["machineID"] = ctx->machineID;
+        doc["machine_id"] = ctx->machine_id;
         doc["type"] = "TEMP";
         doc["status"] = status;
 

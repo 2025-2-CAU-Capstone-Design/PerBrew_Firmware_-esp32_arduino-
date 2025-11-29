@@ -21,7 +21,7 @@ namespace {
     const int MAX_PWM_OUTPUT = 255;                    // 최대 PWM 값
     const double MAX_SAFE_TEMP = 105.0;                // 최대 안전 온도
     const double MIN_SAFE_TEMP = -10.0;                // 최소 안전 온도
-    const int SAMPLE_COUNT = 10;                       // 온도 측정 샘플 수
+    const int HEATER_SAMPLE_COUNT = 10;                // 온도 측정 샘플 수
     const int MAX_CONSECUTIVE_ERRORS = 5;              // 최대 연속 에러
     const unsigned long PID_UPDATE_INTERVAL = 100;    // PID 업데이트 간격 (ms)
     const unsigned long SAFETY_CHECK_INTERVAL = 1000; // 안전 체크 간격 (ms)
@@ -35,13 +35,16 @@ namespace {
 }
 
 
-HeaterDriver::HeaterDriver(){}
+HeaterDriver::HeaterDriver()
+    : pidController(nullptr)
+    {}
 
 void HeaterDriver::begin() {
     #if defined(ARDUINO_ARCH_ESP32)
     analogReadResolution(12);  // ESP32: 12bit ADC
     analogWriteResolution(8);  // PWM: 8bit
     #endif
+
     
     pidController = new PID(&PID_INPUT, &PID_OUTPUT, &PID_SETPOINT, KP, KI, KD, DIRECT);
     pidController->SetMode(AUTOMATIC);
@@ -86,13 +89,14 @@ void HeaterDriver::stopHeating() {
     PID_SETPOINT = 0;
     consecutiveErrors_ = 0;
     heaterState_ = HeaterState::COMPLETED;
+    
 
     Serial.println("[Heater] Heating stopped."); // 디버깅용 출력
 }
 
 // === 상태 업데이트 === 
 void HeaterDriver::update() {
-    if (heaterState_ == HeaterState::IDLE || heaterState_ == HeaterState::ERROR) {
+    if (heaterState_ == HeaterState::IDLE || heaterState_ == HeaterState::ERROR || heaterState_ == HeaterState::COMPLETED) {
         return;  // 동작할 필요 없음
     }
     updateHeatingState();
@@ -175,7 +179,7 @@ void HeaterDriver::updateHeatingState() {
 }
 
 void HeaterDriver::handleTemperatureControl() {
-    double readTemp = readTemperatureAverage(SAMPLE_COUNT);
+    double readTemp = readTemperatureAverage(HEATER_SAMPLE_COUNT);
     //온도 읽어오기 실패
     if (!isfinite(readTemp)) {
         consecutiveErrors_++;
@@ -204,7 +208,7 @@ void HeaterDriver::handleTemperatureControl() {
     // 목표 온도 근처 도달 확인
     if(abs(tempDiff) <= 1.0) {
         stableCount_++;
-        if(stableCount_ >= 5)  // 5회 연속 안정 시 유지 상태로 전환
+        if(stableCount_ >= 10)  // 10회 연속 안정 시 유지 상태로 전환
             heaterState_ = HeaterState::MAINTAINING;
 
     } else {
@@ -232,7 +236,7 @@ void HeaterDriver::handleTemperatureControl() {
 
 // == 안전 체크 함수 == 
 void HeaterDriver::handleSafetyCheck()  {
-    double temp = readTemperatureAverage(SAMPLE_COUNT);
+    double temp = readTemperatureAverage(HEATER_SAMPLE_COUNT);
     
     // 안전장치 1. 온도 읽기 실패
     if(!isfinite(temp)) {

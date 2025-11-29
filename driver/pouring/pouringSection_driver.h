@@ -47,10 +47,16 @@ class PouringSectionDriver {
         long measureDistanceMM() { return measureDistanceCM() * 10; }
         bool isObjectInRange(int minCM = 5, int maxCM = 50);
         
+        /*
         // 노즐 회전 제어 (AccelStepper 사용)
         void rotateNozzle(int steps, bool clockwise = true);
         void rotateNozzleToAngle(float degrees); // 각도 기반 회전
         void stopRotation();
+        */
+        // 노즐 회전 제어 (DC 모터 사용)
+        void startRotation(bool clockwise, int pwmValue);
+        void stopRotation();
+        bool isRotating() const { return rotationRunning_; }
         
         // 노즐 틸트 제어
         void tiltNozzle(long distanceCM); // 거리 기반 틸트
@@ -82,11 +88,11 @@ class PouringSectionDriver {
         const int TrigPin = pin::UltrasonicTrig;
         const int EchoPin = pin::UltrasonicEcho;
         const int PumpPin = pin::PumpPWM;
-        const int PouringRotationStepPin = pin::PouringRotationStep;
-        const int PouringRotationDirPin = pin::PouringRotationDir;
+        const int PouringRotationDir = pin::PouringRotationDir;
+        const int PouringRotationPWM = pin::PouringRotationPWM;
         const int PouringTiltStepPin = pin::PouringAngleStep;
         const int PouringTiltDirPin = pin::PouringAngleDir;
-
+        bool rotationRunning_ = false;
 
         // 스텝 모터 객체
         AccelStepper rotationStepper_;

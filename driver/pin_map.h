@@ -26,8 +26,8 @@ namespace pin {
     // Pouring (Nozzle) Motors
     constexpr uint8_t PouringAngleDir = 4; // strap pin
     constexpr uint8_t PouringAngleStep = 16;
-    constexpr uint8_t PouringRotationDir = 17;
-    constexpr uint8_t PouringRotationStep = 18;
+    constexpr uint8_t PouringRotationPWM = 17;  // DC motor PWM pin
+    constexpr uint8_t PouringRotationDir = 18;
 
 
     // Pump (PWM via LEDC)

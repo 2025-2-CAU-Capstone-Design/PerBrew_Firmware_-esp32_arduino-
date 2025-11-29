@@ -26,6 +26,7 @@ ConnectionContext connCtx;
 // ===== SETUP =====
 void setup() {
     Serial.begin(115200);
+    bootManager.begin();
     vTaskDelay(500);
 
     Serial.println("=== Coffee Machine Boot ===");
@@ -35,6 +36,8 @@ void setup() {
     gShared.currentWeight = 0.0f;
     gShared.currentTemp   = 20.0f;
     gShared.tempStable    = false;
+    gShared.currentSendMode = SendMode::NONE;
+    //gShared.machine_id = bootManager.getmachine_id();
 
     // ----- Queue 생성 -----
     gRecipeQueue  = xQueueCreate(2, sizeof(RecipeInfo));
@@ -50,13 +53,14 @@ void setup() {
     driver.status    = BrewStatus::IDLE;
 
     // ----- Machine ID 설정 -----
-    driver.machineID = bootManager.getMachineID();
-    Serial.println("[MachineID] " + driver.machineID);
+    driver.machine_id = bootManager.getmachine_id();
+    Serial.println("[machine_id] " + driver.machine_id);
 
     // ----- ConnectionContext 초기화 -----
     connCtx.boot = &bootManager;
     connCtx.ble  = new BLEConnectionManager();
     connCtx.wifi = new HttpConnectionManager();
+    connCtx.machine_id = bootManager.getmachine_id();
 
     connCtx.supervisorTask = nullptr;
     connCtx.bleTask        = nullptr;

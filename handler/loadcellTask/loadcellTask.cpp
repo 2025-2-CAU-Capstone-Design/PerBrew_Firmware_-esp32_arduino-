@@ -32,7 +32,7 @@ void LoadCellTask(void* pv) {
 
         // WiFi 송신 큐 전송
         StaticJsonDocument<256> doc;
-        doc["machineID"] = ctx->machineID;
+        doc["machine_id"] = ctx->machine_id;
         doc["type"] = "WEIGHT";
 
         JsonObject data = doc.createNestedObject("data");

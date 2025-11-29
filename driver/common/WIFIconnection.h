@@ -12,6 +12,7 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <WebSocketsClient.h> 
+#include <HTTPClient.h>
 #include "boot.h"
 
 
@@ -20,7 +21,7 @@ public:
     HttpConnectionManager();
     
     // 연결 초기화 (BootManager 완료 후 호출)
-    bool begin(const String& serverIP, uint16_t port = 8080);
+    bool begin(const String& serverIP, uint16_t port = 8080, String machine_id = "", String userEmail="");
     
     // 메시지 송신
     bool sendMessage(String& jsonData);
