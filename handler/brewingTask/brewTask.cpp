@@ -51,9 +51,9 @@ static void sendBrewStatus(DriverContext* driver, const char* status) {
     doc["type"]      = "BREW_STATUS";
     doc["status"]    = status;
 
-    String jsonStr;
-    serializeJson(doc, jsonStr);
-    xQueueSendToBack(gSendQueue, &jsonStr, 0);
+    sendItem item;
+    serializeJson(doc, item.buf, sizeof(item.buf));
+    xQueueSendToBack(gSendQueue, &item, 0);
 }
 
 //========================= Step Functions =========================
@@ -204,6 +204,7 @@ void BrewTask(void* pv) {
         switch (driver->status) {
         case BrewStatus::IDLE:
             // 아무 것도 안 함
+            setSendMode(SendMode::NONE);
             break;
 
         case BrewStatus::BREWSTART:
@@ -250,6 +251,9 @@ void BrewTask(void* pv) {
             StaticJsonDocument<256> doc;
             doc["machine_id"] = driver->machine_id;
             doc["type"] = "BREW_DONE";
+            sendItem item;
+            serializeJson(doc, item.buf, sizeof(item.buf));
+            xQueueSendToBack(gSendQueue, &item, 0);
             break;
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);

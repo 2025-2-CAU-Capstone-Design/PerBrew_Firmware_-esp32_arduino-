@@ -1,123 +1,62 @@
 #pragma once
 #include <Arduino.h>
 #include <NimBLEDevice.h>
-#include <ArduinoJson.h>
-
 
 class BLEConnectionManager {
 public:
     BLEConnectionManager();
-
-    // BLE 초기화
     void begin();
-
-    // RTOS Task에서 주기적으로 호출 - 필요시 확장용
     void poll();
-
-    // BLE 연결 여부
-    bool isConnected() const {
-        return connected;
-    }
-
-    // WiFi SSID/PW 가져오기
-    bool hasReceivedCredentials() const {
-        return credentialsReceived;
-    }
-
-    // 메시지 수신
-    void sendMessage(const String& msg) {
-        if (txChar) {
-            txChar->setValue(msg.c_str());
-            txChar->notify();
-        }
-    }
-    
-    void clearReceivedCredentials() {
-        credentialsReceived = false;
-        receivedSSID = "";
-        receivedPassword = "";
-    }
-
-    String getSSID() const {
-        return receivedSSID;
-    }
-    String getPassword() const {
-        return receivedPassword;
-    }
-    String getUserEmail() const {
-        return userEmail;
-    }
-
-    // BLE 끄기
     void stop();
+    void reAdvertise();
+
+    bool isConnected() const { return connected; }
+    bool hasReceivedCredentials() const { return credentialsReceived; }
+    
+    void sendMessage(const String& msg);
+    void clearReceivedCredentials();
+
+    String getSSID() const { return receivedSSID; }
+    String getPassword() const { return receivedPassword; }
+    String getUserEmail() const { return userEmail; }
 
 private:
-    bool connected;
-    bool credentialsReceived;
-
+    bool connected = false;
+    bool credentialsReceived = false;
     String receivedSSID;
     String receivedPassword;
     String userEmail;
 
-    // UUID
-    const char* SERVICE_UUID = "12345678-0000-0000-0000-000000000000";
-    const char* CHAR_RX_UUID = "12345678-1111-0000-0000-000000000000";
-    const char* CHAR_TX_UUID = "12345678-2222-0000-0000-000000000000";
+    static const char* SERVICE_UUID;
+    static const char* CHAR_RX_UUID;
+    static const char* CHAR_TX_UUID;
 
-    NimBLEServer* server;
-    NimBLEAdvertising* ad; 
-    NimBLECharacteristic* rxChar;
-    NimBLECharacteristic* txChar;
+    NimBLEAdvertising* advertising = nullptr;
+    NimBLEServer* server = nullptr;
+    NimBLECharacteristic* rxCharacteristic = nullptr;
+    NimBLECharacteristic* txCharacteristic = nullptr;
 
-    // 내부 콜백 클래스들
-class ServerCallbacks : public NimBLEServerCallbacks {
-    void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
-        Serial.printf("Client address: %s\n", connInfo.getAddress().toString().c_str());
-        pServer->updateConnParams(connInfo.getConnHandle(), 24, 48, 0, 180);
-    }
-
-    void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
-        Serial.printf("Client disconnected - start advertising\n");
-        NimBLEDevice::startAdvertising();
-    }
-
-    void onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo) override {
-        Serial.printf("MTU updated: %u for connection ID: %u\n", MTU, connInfo.getConnHandle());
-    }
-} serverCallbacks;
-
-    class RXCallbacks : public NimBLECharacteristicCallbacks {
+    class ServerCallbacks : public NimBLEServerCallbacks {
     public:
-        void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
-        Serial.printf("%s : onRead(), value: %s\n",
-                      pCharacteristic->getUUID().toString().c_str(),
-                      pCharacteristic->getValue().c_str());
-        }
-
-        void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
-            Serial.printf("%s : onWrite(), value: %s\n",
-                        pCharacteristic->getUUID().toString().c_str(),
-                        pCharacteristic->getValue().c_str());
-        }
-
-        private:
-            BLEConnectionManager* parent;
+        explicit ServerCallbacks(BLEConnectionManager* p) : parent(p) {}
+        void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override;
+        void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override;
+    private:
+        BLEConnectionManager* parent;
     };
+
     class CharacteristicCallbacks : public NimBLECharacteristicCallbacks {
-        void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
-            Serial.printf("%s : onRead(), value: %s\n",
-                        pCharacteristic->getUUID().toString().c_str(),
-                        pCharacteristic->getValue().c_str());
-        }
+    public:
+        explicit CharacteristicCallbacks(BLEConnectionManager* p) : parent(p) {}
+        void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override;
+    private:
+        BLEConnectionManager* parent;
+    };
 
-        void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
-            Serial.printf("%s : onWrite(), value: %s\n",
-                        pCharacteristic->getUUID().toString().c_str(),
-                        pCharacteristic->getValue().c_str());
-        }
-    } charCallbacks;
-
-    // 콜백 객체 (new/delete 안 쓰고 멤버로 보관)
     ServerCallbacks serverCallbacks;
-    RXCallbacks     rxCallbacks;
+    CharacteristicCallbacks characteristicCallbacks;
+
+    void handleConnect(NimBLEServer* pServer);
+    void handleDisconnect(NimBLEServer* pServer);
+    void handleReceivedData(const std::string& value);
 };

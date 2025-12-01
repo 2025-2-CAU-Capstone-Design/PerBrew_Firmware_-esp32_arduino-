@@ -24,7 +24,7 @@ public:
     bool begin(const String& serverIP, uint16_t port = 8080, String machine_id = "", String userEmail="");
     
     // 메시지 송신
-    bool sendMessage(String& jsonData);
+    bool sendMessage(sendItem&  sendData);
     
     // 메시지 라우팅
     void routeMessage();
@@ -59,10 +59,12 @@ private:
     StaticJsonDocument<4096> jsonDoc;
     String lastReceivedMessage;
     RecipeInfo ParsedRecipe;
-    bool connected;
+    String machine_id;
+    String userEmail;
 
     void (*messageCallback)(String message) = nullptr;
-    
+    bool performRegistration();
+    bool attemptWebSocketConnection();
     // WebSocket 이벤트 핸들러 (static)
     static void webSocketEvent(WStype_t type, uint8_t* payload, size_t length);
     

@@ -1,186 +1,155 @@
 #include "BLEconnection.h"
 
-BLEConnectionManager::BLEConnectionManager()
-    : connected(false), credentialsReceived(false),
-      server(nullptr), rxChar(nullptr), txChar(nullptr),
-      serverCallbacks(this), rxCallbacks(this)
-{}
+const char* BLEConnectionManager::SERVICE_UUID = "12345678-0000-0000-0000-000000000000";
+const char* BLEConnectionManager::CHAR_RX_UUID = "12345678-1111-0000-0000-000000000000";
+const char* BLEConnectionManager::CHAR_TX_UUID = "12345678-2222-0000-0000-000000000000";
+
+BLEConnectionManager::BLEConnectionManager() 
+    : serverCallbacks(this), characteristicCallbacks(this) {
+}
 
 void BLEConnectionManager::begin() {
     Serial.println("[BLE] Initializing BLE...");
 
-    NimBLEDevice::init("PerBrew-Setup");
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9); 
-    NimBLEDevice::setMTU(517);
-
+    NimBLEDevice::init("PerBrew");
+    
     server = NimBLEDevice::createServer();
     server->setCallbacks(&serverCallbacks);
 
     NimBLEService* service = server->createService(SERVICE_UUID);
-    NimBLECharacteristic* rxChar = service->createCharacteristic(
+
+    // Receive characteristic (앱에서 데이터를 쓰는 특성)
+    rxCharacteristic = service->createCharacteristic(
         CHAR_RX_UUID,
-        NIMBLE_PROPERTY::WRITE, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | 
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
+    rxCharacteristic->setCallbacks(&characteristicCallbacks);
 
-    rxChar->setCallbacks(&rxCallbacks);
-    Serial.println("[BLE] RX Characteristic callbacks set");
-
-    txChar = service->createCharacteristic(
+    // Transmit characteristic (ESP32에서 앱으로 알림을 보내는 특성)
+    txCharacteristic = service->createCharacteristic(
         CHAR_TX_UUID,
         NIMBLE_PROPERTY::NOTIFY
     );
-    Serial.println("[BLE] TX Characteristic created");
 
     service->start();
 
-    // 광고 설정
-    ad = NimBLEDevice::getAdvertising();
-    ad->addServiceUUID(SERVICE_UUID);
-    NimBLEAdvertisementData scanResponseData;
-    scanResponseData.setName("PerBrew-Setup");
-    ad->setScanResponseData(scanResponseData);  
-    ad->start();
+    advertising = NimBLEDevice::getAdvertising();
+    advertising->addServiceUUID(SERVICE_UUID);
+    advertising->start();
 
     Serial.println("[BLE] Advertising started");
 }
 
-
 void BLEConnectionManager::poll() {
-    if (server != nullptr) {
-        bool wasConnected = connected;
+    // 연결 상태 업데이트
+    if (server) {
         connected = (server->getConnectedCount() > 0);
-        
-        // 연결 상태가 변경된 경우에만 로그 출력
-        if (connected && !wasConnected) {
-            Serial.println("[BLE] Client connected successfully");
-        }
-        else if (!connected && wasConnected) {
-            Serial.println("[BLE] Client disconnected");
-            // 연결이 끊어졌을 때 광고 재시작
-            if (NimBLEDevice::getAdvertising()->isAdvertising() == false) {
-                NimBLEDevice::startAdvertising();
-                Serial.println("[BLE] Advertising restarted after disconnect");
-            }
-        }
-    }   
-    // 주기적으로 연결 상태 출력 (선택사항)
-    static unsigned long lastStatusPrint = 0;
-    if (!connected && (millis() - lastStatusPrint > 10000)) {  // 10초마다
-        Serial.println("[BLE] Advertising... (waiting for connection)");
-        lastStatusPrint = millis();
     }
 }
 
+void BLEConnectionManager::reAdvertise() {
+    advertising->addServiceUUID(SERVICE_UUID);
+    advertising->start();
+    Serial.println("[BLE] Re-advertising started");
+}
 
 void BLEConnectionManager::stop() {
     Serial.println("[BLE] Stopping BLE...");
-    NimBLEDevice::stopAdvertising();
-
+    advertising->stop();
     connected = false;
-    // dangling 방지
-    server = nullptr;
-    rxChar = nullptr;
-    txChar = nullptr;
 }
 
-
-void BLEConnectionManager::RXCallbacks::onWrite(NimBLECharacteristic* c) {
-    Serial.println("[BLE] onWrite callback triggered");  // 이 로그가 출력되는지 확인
-    if (!parent) {
-        Serial.println("[BLE] Error: parent is null in onWrite");
-        return;
+void BLEConnectionManager::sendMessage(const String& msg) {
+    if (txCharacteristic && connected) {
+        txCharacteristic->setValue(msg.c_str());
+        txCharacteristic->notify();
+        Serial.printf("[BLE] Message sent to app: %s\n", msg.c_str());
+    } else {
+        Serial.println("[BLE] Cannot send message: not connected or txCharacteristic is null");
     }
-    std::string value = c->getValue();
-    Serial.printf("[BLE] Raw data received in onWrite: length=%d\n", value.length());
-    parent->handleRX(value);
 }
 
-/* s : p : e*/
-void BLEConnectionManager::handleRX(const std::string& value) {
-    Serial.printf("[BLE] handleRX called with data length: %d\n", value.length());
+void BLEConnectionManager::clearReceivedCredentials() {
+    credentialsReceived = false;
+    receivedSSID = "";
+    receivedPassword = "";
+    userEmail = "";
+}
+
+void BLEConnectionManager::ServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
+    if (parent) {
+        parent->handleConnect(pServer);
+    }
+}
+
+void BLEConnectionManager::ServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
+    if (parent) {
+        parent->handleDisconnect(pServer);
+    }
+}
+
+void BLEConnectionManager::CharacteristicCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
+    if (!parent) return;
+
+    std::string value = pCharacteristic->getValue();
     
+    Serial.printf("[BLE] onWrite called - data length: %d\n", value.length());
+    if (!value.empty()) {
+        Serial.printf("[BLE] Received data: %s\n", value.c_str());
+        parent->handleReceivedData(value);
+    }
+}
+
+void BLEConnectionManager::handleConnect(NimBLEServer* pServer) {
+    connected = true;
+    Serial.println("[BLE] Client connected");
+}
+
+void BLEConnectionManager::handleDisconnect(NimBLEServer* pServer) {
+    connected = false;
+    Serial.println("[BLE] Client disconnected");
+    NimBLEDevice::startAdvertising();
+    Serial.println("[BLE] Advertising restarted");
+}
+
+void BLEConnectionManager::handleReceivedData(const std::string& value) {
     if (value.empty()) {
         Serial.println("[BLE] Received empty data");
         return;
     }
 
-    String raw = String(value.c_str()); 
-    Serial.println("\n[BLE] --------------------------------");
-    Serial.printf("[BLE] Message Received: %s\n", raw.c_str());
-    Serial.println("[BLE] --------------------------------\n"); 
-    int colonIndex = raw.indexOf(':');
-    
+    String receivedData(value.c_str());
+    receivedData.trim();
+
+    // "prefix:data" 형식 파싱
+    int colonIndex = receivedData.indexOf(':');
     if (colonIndex == -1) {
-        Serial.println("[BLE] Error: Invalid format. Expected 'prefix:data' format");
+        Serial.println("[BLE] Error: Invalid data format. Expected 'prefix:data'");
         sendMessage("error:invalid_format");
         return;
     }
 
-    String prefix = raw.substring(0, colonIndex);
-    String data = raw.substring(colonIndex + 1);
+    String prefix = receivedData.substring(0, colonIndex);
+    String data = receivedData.substring(colonIndex + 1);
+
+    Serial.printf("[BLE] Parsed - Prefix: '%s', Data: '%s'\n", prefix.c_str(), data.c_str());
 
     if (prefix == "s") {
         receivedSSID = data;
-        Serial.printf("[BLE] SSID received: %s\n", receivedSSID.c_str());
-        sendMessage("success:ssid");
+        Serial.printf("[BLE] SSID received: '%s' (length: %d)\n", receivedSSID.c_str(), receivedSSID.length());
     }
     else if (prefix == "p") {
         receivedPassword = data;
-        Serial.printf("[BLE] Password received: %s\n", receivedPassword.c_str());
-        sendMessage("success:password");
+        Serial.printf("[BLE] Password received (length: %d)\n", receivedPassword.length());
     }
     else if (prefix == "e") {
         userEmail = data;
-        credentialsReceived = true; // 이메일 수신 시 모든 자격증명 수신 완료로 간주
+        credentialsReceived = true;
         Serial.printf("[BLE] Email received: %s\n", userEmail.c_str());
-        Serial.println("[BLE] All credentials received.");
-        sendMessage("success:all");
+        Serial.println("[BLE] All credentials received");
+        sendMessage("ok");
     }
     else {
-        Serial.println("[BLE] Error: Unknown prefix: " + prefix);
-        sendMessage("error:unknown_prefix");
+        Serial.printf("[BLE] Error: Unknown prefix '%s'\n", prefix.c_str());
     }
 }
-
-/*
-void BLEConnectionManager::handleRX(const std::string& value) {
-    Serial.printf("[BLE] handleRX called with data length: %d\n", value.length());
-    
-    if (value.empty()) {
-        Serial.println("[BLE] Received empty data");
-        return;
-    }
-
-    String raw = String(value.c_str()); 
-    Serial.println("\n[BLE] --------------------------------");
-    Serial.printf("[BLE] Message Received: %s\n", raw.c_str());
-    Serial.println("[BLE] --------------------------------\n");
-    
-    StaticJsonDocument<512> doc;
-    DeserializationError error = deserializeJson(doc, raw);
-
-    if (error) {
-        Serial.print(F("[BLE] deserializeJson() failed: "));
-        Serial.println(error.f_str());
-        return;
-    }
-
-    // JSON에서 값 추출 (키가 없으면 null 반환되므로 안전하게 처리)
-    const char* ssid = doc["ssid"];
-    const char* password = doc["password"];
-    const char* email = doc["email"];
-
-    // String 변수에 할당 (null인 경우 빈 문자열)
-    receivedSSID     = ssid ? String(ssid) : "";
-    receivedPassword = password ? String(password) : "";
-    userEmail        = email ? String(email) : "";
-
-    // SSID가 유효한 경우에만 수신 완료 처리
-    if (receivedSSID.length() > 0) {
-        credentialsReceived = true;
-        Serial.printf("[BLE] Parsed SSID: %s\n", receivedSSID.c_str());
-        Serial.printf("[BLE] Parsed Email: %s\n", userEmail.c_str());
-    } else {
-        Serial.println("[BLE] Error: SSID missing in JSON data");
-    }
-}*/

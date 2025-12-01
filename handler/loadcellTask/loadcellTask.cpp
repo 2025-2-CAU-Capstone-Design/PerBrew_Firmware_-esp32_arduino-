@@ -39,11 +39,11 @@ void LoadCellTask(void* pv) {
         data["value"] = w;
         data["unit"]  = "g";
 
-        String jsonStr;
-        serializeJson(doc, jsonStr);
-
+        sendItem item;
+        serializeJson(doc, item.buf, sizeof(item.buf));
+        Serial.println("[LoadCellTask] Sending weight data: " + String(item.buf));
         // 큐 전송
-        xQueueSendToBack(gSendQueue, &jsonStr, 0);
+        xQueueSendToBack(gSendQueue, &item, 0);
 
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }

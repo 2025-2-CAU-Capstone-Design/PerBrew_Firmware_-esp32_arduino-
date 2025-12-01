@@ -4,33 +4,58 @@
 HttpConnectionManager* HttpConnectionManager::instance = nullptr;
 
 HttpConnectionManager::HttpConnectionManager() 
-    : connected(false), serverPort(8000) {
+    : serverPort(8000) {
     instance = this;  // static 포인터에 현재 객체 저장
 }
 
 bool HttpConnectionManager::begin(const String& serverIP, uint16_t port, String machine_id, String userEmail) {
-    // WiFi 연결 확인
+    // WiFi 연결 확인`
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[WIFI] WiFi not connected!");
         return false;
     }
+
+    /* --- 네트워크 확인 --- */
+    // 네트워크 연결성 확인을 위한 추가 디버깅 정보 출력
+    Serial.println("=== Network Diagnostics ===");
+    Serial.print("WiFi Status: ");
+    Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+    Serial.print("ESP32 IP Address: ");  // [추가] ESP32 IP 주소 출력
+    Serial.println(WiFi.localIP());
+    Serial.print("Local IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Gateway IP: ");
+    Serial.println(WiFi.gatewayIP());
+    Serial.print("Subnet Mask: ");
+    Serial.println(WiFi.subnetMask());
+    Serial.println("==================================================");
+
     serverUrl = serverIP;
     serverPort = port;
+    this->machine_id = machine_id;
+    this->userEmail = userEmail;
+
+    IPAddress testIP;
+    if (!testIP.fromString(serverIP.c_str())) {
+        Serial.println("[WIFI] Invalid server IP address");
+        return false;
+    }Serial.printf("[WIFI] Attempting to connect to server: %s:%d\n", serverIP.c_str(), port);
+
     HTTPClient http;
-    String registerUrl = "http://" + serverIP + ":" + String(port) + "/machine/register" + machine_id; 
+    String registerUrl = "http://" + serverIP + ":" + String(port) + "/machine/" + machine_id + "/register"; 
     Serial.printf("[WIFI] Registering machine at: %s\n", registerUrl.c_str());
     
     http.begin(registerUrl);
+    http.setTimeout(10000);  // 10초 타임아웃 설정
     http.addHeader("Content-Type", "application/json");
 
-    // WebSocket 이벤트 핸들러 등록
-    wsClient.onEvent(webSocketEvent);
     StaticJsonDocument<200> doc;
     doc["machine_id"] = machine_id;
-    doc["user_email"] = userEmail;
+    doc["email"] = userEmail;
     String requestBody;
     serializeJson(doc, requestBody);
     int httpResponse = http.POST(requestBody);
+    delay(3000);
     bool registrationSucess =false;
     if(httpResponse > 0) {
         String response = http.getString();
@@ -40,21 +65,26 @@ bool HttpConnectionManager::begin(const String& serverIP, uint16_t port, String 
         // 200 OK 또는 201 Created 등 성공 코드 확인
         if (httpResponse == 200 || httpResponse == 201) {
             registrationSucess = true;
+        } else {
+            Serial.printf("[WIFI] Registration failed with HTTP status: %d\n", httpResponse);
         }
-    } else {
-        Serial.printf("[WIFI] Error on sending POST: %s\n", http.errorToString(httpResponse).c_str());
     }   
+    else {
+        Serial.printf("[WIFI] Error on sending POST: %s\n", http.errorToString(httpResponse).c_str());
+    }      
     http.end();
     if(!registrationSucess) return false;
     // WebSocket 연결 시작
-    String url = "/ws/machine" + machine_id;
-    wsClient.begin(serverUrl, serverPort,url.c_str());
-    
-    // 재연결 설정
+    String path = "/ws/machine/" + machine_id;
+    Serial.printf("[DEBUG] Trying WS: ws://%s:%d%s\n",
+                  serverIP.c_str(), port, path.c_str());
+    wsClient.onEvent(webSocketEvent);
     wsClient.setReconnectInterval(5000);  // 5초마다 재연결 시도
-    wsClient.enableHeartbeat(15000, 3000, 2);  // Ping: 15초, Pong timeout: 3초, 재시도: 2회
+    wsClient.begin(serverIP.c_str(), port, path.c_str());
+    delay(3000);
+    //wsClient.enableHeartbeat(15000, 3000, 2);  // Ping: 15초, Pong timeout: 3초, 재시도: 2회
     
-    Serial.printf("[WIFI] Connecting to websockets://%s:%d/ws\n", serverUrl.c_str(), serverPort);
+    Serial.printf("[WIFI] Connecting to websockets://%s:%d/ws/machine/%s\n", serverUrl.c_str(), serverPort, machine_id.c_str());
     
     return true;
 }
@@ -72,17 +102,15 @@ void HttpConnectionManager::handleEvent(WStype_t type, uint8_t* payload, size_t 
     switch(type) {
         case WStype_DISCONNECTED:
             Serial.println("[WIFI] Disconnected");
-            connected = false;
             break;
             
         case WStype_CONNECTED:
             Serial.printf("[WIFI] Connected to: %s\n", payload);
-            connected = true;
             break;
             
         case WStype_TEXT:
             Serial.printf("[WIFI] Received: %s\n", payload);
-            if(connected){
+            if(isConnected()){
                 routeMessage();
             }
             break;
@@ -92,16 +120,15 @@ void HttpConnectionManager::handleEvent(WStype_t type, uint8_t* payload, size_t 
             break;
             
         case WStype_PING:
-            Serial.println("[WIFI] Got Ping");
+            //Serial.println("[WIFI] Got Ping");
             break;
             
         case WStype_PONG:
-            Serial.println("[WIFI] Got Pong");
+            //Serial.println("[WIFI] Got Pong");
             break;
             
         case WStype_ERROR:
             Serial.printf("[WIFI] Error: %s\n", payload);
-            connected = false;
             break;
         case WStype_FRAGMENT_TEXT_START:
 		case WStype_FRAGMENT_BIN_START:
@@ -111,16 +138,17 @@ void HttpConnectionManager::handleEvent(WStype_t type, uint8_t* payload, size_t 
     }
 }
 
-bool HttpConnectionManager::sendMessage(String& jsonData) {
-    if (!connected) {
+bool HttpConnectionManager::sendMessage(sendItem& sendData) {
+    if (wsClient.isConnected() == false) {
         Serial.println("[WIFI] Not connected!");
         return false;
     }
-    
-    bool success = wsClient.sendTXT(jsonData);
+    String jsonStr(sendData.buf);
+
+    bool success = wsClient.sendTXT(jsonStr);
     
     if (success) {
-        Serial.printf("[WIFI] Sent: %s\n", jsonData.c_str());
+        Serial.printf("[WIFI TASK] Sent data: %s\n", String(sendData.buf));
     } else {
         Serial.println("[WIFI] Send Failed!");
     }
@@ -130,6 +158,7 @@ bool HttpConnectionManager::sendMessage(String& jsonData) {
 void HttpConnectionManager::routeMessage() {
     // getLastReceivedMessage()는 반환 후 초기화하므로 한 번만 호출
     String receivedMsg = getLastReceivedMessage();
+    cmdItem command;
     auto& doc = jsonDoc;
     auto error = deserializeJson(doc, receivedMsg);
     if(error){
@@ -155,10 +184,10 @@ void HttpConnectionManager::routeMessage() {
              type == "REGISTER_MACHINE" || type == "LOADCELL_VALUE" ||
              type == "BREW_STATUS")
             {
-                String command = type;
+                SAFE_COPY_TO_BUFFER(command, type);
                 if(gCommandQueue != nullptr){
                     xQueueSend(gCommandQueue, &command, 0);
-                    Serial.println("[WIFI] Command sent to queue: " + command);
+                    Serial.println("[WIFI] Command sent to queue: " + type);
                 }
             }
         else{
@@ -168,7 +197,7 @@ void HttpConnectionManager::routeMessage() {
 
 
 bool HttpConnectionManager::isConnected() {
-    return connected && wsClient.isConnected();
+    return wsClient.isConnected();
 }
 
 void HttpConnectionManager::poll() {
@@ -177,7 +206,6 @@ void HttpConnectionManager::poll() {
 
 void HttpConnectionManager::disconnect() {
     wsClient.disconnect();
-    connected = false;
     Serial.println("[WIFI] Disconnected");
 }
 
@@ -186,12 +214,11 @@ bool HttpConnectionManager::reconnect() {
         Serial.println("[WIFI] WiFi disconnected");
         return false;
     }
-    
     Serial.println("[WIFI] Attempting reconnect...");
     wsClient.disconnect();
     delay(100);
-    wsClient.begin(serverUrl, serverPort, "/ws");
-    
+    String url = "/ws/machine/" + machine_id;
+    wsClient.begin(serverUrl, serverPort, url.c_str());
     return true;
 }
 

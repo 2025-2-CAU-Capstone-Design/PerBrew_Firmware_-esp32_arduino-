@@ -20,6 +20,21 @@ class BootManager;
 #define BLE_MODE "BLE"
 #define WIFI_MODE "WIFI"
 
+// ==== String To Data Format
+//String을 cmdItem/SendItem 버퍼로 복사
+#define SAFE_COPY_TO_BUFFER(dest, src) \
+    do { \
+        memset((dest).buf, 0, sizeof((dest).buf)); \
+        strncpy((dest).buf, (src).c_str(), sizeof((dest).buf) - 1); \
+    } while(0)
+
+//char*을 cmdItem/SendItem 버퍼로 복사    
+#define SAFE_COPY_CSTR_TO_BUFFER(dest, src) \
+    do { \
+        memset((dest).buf, 0, sizeof((dest).buf)); \
+        strncpy((dest).buf, (src), sizeof((dest).buf) - 1); \
+    } while(0)
+
 // ===== Brew Status =====
 enum class BrewStatus {
     IDLE,
@@ -81,6 +96,16 @@ enum class SendMode {
     BREWING     // 온도 + 무게 보내기
 };
 
+
+typedef struct {
+    char buf[10240]; // 크으으으게 잡자
+} sendItem;
+
+typedef struct {
+    char buf[256];
+} cmdItem;
+
+
 // 연결 컨텍스트
 struct ConnectionContext {
     BLEConnectionManager* ble;
@@ -88,6 +113,7 @@ struct ConnectionContext {
     BootManager* boot;
     String machine_id;
     String userEmail;
+    bool bleModeActive = false;
 
     TaskHandle_t supervisorTask;
     TaskHandle_t bleTask;

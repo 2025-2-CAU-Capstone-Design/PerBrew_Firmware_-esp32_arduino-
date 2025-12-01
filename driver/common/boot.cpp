@@ -25,7 +25,7 @@ String BootManager::begin() {
     bool doesExist = preferences.isKey("ssid");
     preferences.end();
     // WiFi 연결 시도
-    if (doesExist) {
+    if (tryConnectWiFi()) {
         currentMode = WIFI_MODE;
         Serial.println("[Boot] WiFi Connected");
     } else {
@@ -36,8 +36,6 @@ String BootManager::begin() {
     
     return currentMode;
 }
-
-// not used functions : supervisor에서 직접 접근
 bool BootManager::tryConnectWiFi() {
     preferences.begin("boot", false);
     bool doesExist = preferences.isKey("ssid");

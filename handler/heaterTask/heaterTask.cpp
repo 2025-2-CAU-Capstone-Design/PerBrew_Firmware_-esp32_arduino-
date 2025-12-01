@@ -49,9 +49,10 @@ void HeaterTask(void* pv) {
         JsonObject data = doc.createNestedObject("data");
         data["value"] = temp;
 
-        String jsonStr;
-        serializeJson(doc, jsonStr);
-        xQueueSendToBack(gSendQueue, &jsonStr, 0);
+        sendItem item;
+        serializeJson(doc, item.buf, sizeof(item.buf));
+        Serial.println("[HeaterTask] Sending temperature data: " + String(item.buf));
+        xQueueSendToBack(gSendQueue, &item, 0);
 
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }

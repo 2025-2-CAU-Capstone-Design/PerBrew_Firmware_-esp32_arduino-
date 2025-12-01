@@ -2,14 +2,7 @@
 #include "../driver/common/BLEconnection.h"
 #include "../driver/common/WIFIconnection.h"
 #include "../driver/common/boot.h"
-
-
-// [C++ 수정 전]
-// wsClient.begin(serverIP, 8080, "/ws");
-
-// [C++ 수정 후]
-// 1. 포트 확인: FastAPI 기본은 8000입니다. (uvicorn 실행 시 포트 확인)
-// 2. 경로 확인: /ws/machine/{머신ID} 형식이어야 합니다.
+#include "../driver/data_format.h"
 /*
     String machine_id = "ESP32_001"; // 실제 머신 ID 변수 사용
     String url = "/ws/machine/" + machine_id;
@@ -28,14 +21,32 @@ static void startBleTask(ConnectionContext* ctx) {
             1,
             &ctx->bleTask
         );
-        Serial.println("[SUP] BLE task started");
+        Serial.println("[SUP] BLE task started");   
+        ctx->bleModeActive = true;
+    }
+}
+
+
+/*
+    교착상태 발생...
+    vTaskDelete 타이밍과 BLE 테스크 내부 삭제 타이밍이 겹치는 것으로 보임 -> Race Condition
+
+*/
+static void stopBLETask(ConnectionContext* ctx) {
+    if (ctx->bleTask != nullptr){
+        Serial.println("[SUP] Stopping BLE task...");
+        ctx->ble->stop();
+        //vTaskDelete(ctx->bleTask);
+        ctx->bleModeActive = false;
+        Serial.println("[SUP] BLE task stopped");
     }
 }
 
 static void startWifiTask(ConnectionContext* ctx) {
     if (ctx->wifiTask == nullptr) {
-        xTaskCreate( WIFIConnectionTask,"WIFIConnectionTask", 8192,ctx,1,&ctx->wifiTask);
+        xTaskCreate( WIFIConnectionTask,"WIFIConnectionTask", 8192,ctx,4,&ctx->wifiTask);
         Serial.println("[SUP] WIFI task started");
+        ctx->bleModeActive = false;
     }
 }
 
@@ -44,9 +55,11 @@ static void stopWifiTask(ConnectionContext* ctx) {
         Serial.println("[SUP] Stopping WIFI task...");
         vTaskDelete(ctx->wifiTask);
         ctx->wifiTask = nullptr;
-                WiFi.disconnect(true); 
+        if (ctx->wifi) ctx->wifi->disconnect(); 
+        WiFi.disconnect(true); 
         WiFi.mode(WIFI_OFF);
         Serial.println("[SUP] WIFI task stopped & Radio OFF");
+        ctx->bleModeActive = true;
     }
 }
 
@@ -63,6 +76,13 @@ void BleConnectionTask(void* pv) {
     ble->begin();
 
     while(true) {
+        if(!ctx->bleModeActive){
+            Serial.println("[BLE Task] Stop requested, shutting down BLE...");
+            ble->stop();
+            ctx->bleTask = nullptr;
+            vTaskDelete(NULL);
+        }
+
         ble->poll();
         if (ble->hasReceivedCredentials() && ble->isConnected()) {
             if (currentTry == 0) {
@@ -99,6 +119,7 @@ void BleConnectionTask(void* pv) {
                 Serial.println("[BLE] WiFi Failed. Resetting credentials.");
                 ble->sendMessage("WiFi_fail");
                 ble->clearReceivedCredentials();
+                ble->reAdvertise();
                 currentTry = 0;
             }
         }
@@ -125,30 +146,36 @@ void BleConnectionTask(void* pv) {
 */
 void WIFIConnectionTask(void* pv) {
     ConnectionContext* ctx  = (ConnectionContext*)pv;
-    HttpConnectionManager* wifi = ctx->wifi;
-    String serverIP = "192.168.56.1";
-    
-    wifi -> begin(serverIP, 8000, ctx->machine_id, ctx->userEmail);
+    HttpConnectionManager* webSockets = ctx->wifi;
+    //String serverIP = "172.30.1.74";
+    //String serverIP = "172.30.1.79";
+    //String serverIP = "192.168.137.1";
+    String serverIP = "192.168.0.9";
+    sendItem dataToSend;
+    webSockets -> begin(serverIP, 8000, ctx->machine_id, ctx->userEmail);
+    bool isConnected = true;
     while(true) {
-        
-        if(!wifi -> isConnected()) {
-            Serial.println("[WIFI TASK] Not connected. Retrying in 5 seconds...");
-            vTaskDelay(5000 / portTICK_PERIOD_MS);
-            continue;
-        }
-        wifi -> poll();
-
+        //Serial.println("[WIFI TASK] Polling WebSocket...");
+        webSockets -> poll();
+        isConnected = webSockets -> isConnected();
         // sendQueue에 데이터가 있으면 전송
-        if(uxQueueMessagesWaiting(gSendQueue) > 0) {
-            String dataToSend;
-            if (xQueueReceive(gSendQueue, &dataToSend, 0) == pdTRUE) {
-                wifi->sendMessage(dataToSend);
-                Serial.println("[WIFI TASK] Sent data: " + dataToSend);
+        if (!isConnected) {
+            sendItem dummy;
+            while (xQueueReceive(gSendQueue, &dummy, 0) == pdPASS) {
+                // 버퍼 초기화
             }
         }
+        else if(uxQueueMessagesWaiting(gSendQueue) > 0) {
+            if (xQueueReceive(gSendQueue, &dataToSend, pdMS_TO_TICKS(100)) == pdPASS) {
+                webSockets->sendMessage(dataToSend);
+                Serial.println("[WIFI TASK] Sent data: " + String(dataToSend.buf));
+            }
+        }
+
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }
+
 
 
 // ===== Supervisor Task =====
@@ -167,44 +194,69 @@ void ConnectionSupervisorTask(void* pv) {
     if (mode == WIFI_MODE) {
         Serial.println("[SUP] Boot in WiFi mode");
         startWifiTask(ctx);
+        ctx->bleModeActive = false;
     } else {
         Serial.println("[SUP] Boot in BLE mode");
         startBleTask(ctx);
+        ctx->bleModeActive = true;
     }
 
     uint8_t wifiDeadCount = 0;
+    uint8_t websocketDeadCount = 0;
 
     while (true) {
         // 2) BLE -> WiFi 연결 성공 이벤트 처리
         uint32_t notified = 0;
-        if (xTaskNotifyWait(
-                0,
-                0xFFFFFFFF,
-                &notified,
-                WIFI_CHECK_INTERVAL_MS / portTICK_PERIOD_MS
-            ) == pdTRUE)
-        {
+        if (xTaskNotifyWait( 0, 0xFFFFFFFF,&notified,
+                WIFI_CHECK_INTERVAL_MS / portTICK_PERIOD_MS ) == pdTRUE){
             if (notified & WIFI_EVT_PROVISIONED) {
                 Serial.println("[SUP] WiFi provisioned by BLE, starting WiFi task");
+                ctx->bleModeActive = false;
                 startWifiTask(ctx);
+                stopBLETask(ctx);
                 wifiDeadCount = 0;
+                websocketDeadCount = 0;
+                wifiDeadCount = 0;
+                continue;
             }
         }
 
-        // 3) WiFi 상태 체크 → 오래 죽어 있으면 BLE 재시작
-        if (ctx->wifiTask != nullptr && ctx->wifi != nullptr){
-            if (!ctx->wifi->isConnected()) {
+        // 3) WiFi 상태 체크 -> 오래 죽어 있으면 BLE 재시작
+        if (!ctx->bleModeActive) {
+        if (ctx->wifi != nullptr) {
+            if (WiFi.status() != WL_CONNECTED) {
                 wifiDeadCount++;
-                Serial.printf("[SUP] WiFi disconnected (%d)\n", wifiDeadCount);
+                Serial.printf("[SUP] try to connect websockets... (%d)\n", wifiDeadCount);
                 if (wifiDeadCount >= WIFI_MAX_DEAD_CHECK) {
                     Serial.println("[SUP] WiFi seems dead, restarting BLE provisioning");
+                    ctx->bleModeActive = true;
+                    boot->clearWiFiCredentials();
                     stopWifiTask(ctx);
+                    ctx->wifi = nullptr;  // 추가: ctx 업데이트
                     startBleTask(ctx);
                     wifiDeadCount = 0;
+                    websocketDeadCount = 0;
                 }
             } else {
                 wifiDeadCount = 0;
             }
         }
     }
+        if (ctx->wifi != nullptr && !(ctx->wifi->isConnected()) && !ctx->bleModeActive) {
+            websocketDeadCount++;
+            Serial.printf("[SUP] WebSocket disconnected (%d/%d)\n", websocketDeadCount, WIFI_MAX_DEAD_CHECK * 2);
+            if (websocketDeadCount >= WIFI_MAX_DEAD_CHECK * 2) {
+                Serial.println("[SUP] WebSocket seems dead, restarting BLE provisioning");
+                boot->clearWiFiCredentials();
+                stopWifiTask(ctx);
+                ctx->wifi = nullptr;  // 추가: ctx 업데이트
+                startBleTask(ctx);
+                ctx->bleModeActive = true;
+                websocketDeadCount = 0;
+                wifiDeadCount = 0;
+            }
+        } else {
+            websocketDeadCount = 0;
+        }
+    }   
 }
