@@ -35,6 +35,13 @@ class BootManager;
         strncpy((dest).buf, (src), sizeof((dest).buf) - 1); \
     } while(0)
 
+#define JSON_TO_SENDITEM(outItem, jsonDoc) \
+    do { \
+        memset((outItem).buf, 0, sizeof((outItem).buf)); \
+        size_t __n = serializeJson((jsonDoc), (outItem).buf, sizeof((outItem).buf) - 1); \
+        (outItem).buf[ (__n < sizeof((outItem).buf)) ? __n : (sizeof((outItem).buf) - 1) ] = '\0'; \
+    } while(0)
+        
 // ===== Brew Status =====
 enum class BrewStatus {
     IDLE,
@@ -98,7 +105,7 @@ enum class SendMode {
 
 
 typedef struct {
-    char buf[10240]; // 크으으으게 잡자
+    char buf[2048]; // 크으으으게 잡자
 } sendItem;
 
 typedef struct {

@@ -44,7 +44,7 @@ static void stopBLETask(ConnectionContext* ctx) {
 
 static void startWifiTask(ConnectionContext* ctx) {
     if (ctx->wifiTask == nullptr) {
-        xTaskCreate( WIFIConnectionTask,"WIFIConnectionTask", 8192,ctx,4,&ctx->wifiTask);
+        xTaskCreate( WIFIConnectionTask,"WIFIConnectionTask", 16384, ctx,4,&ctx->wifiTask);
         Serial.println("[SUP] WIFI task started");
         ctx->bleModeActive = false;
     }
@@ -151,28 +151,20 @@ void WIFIConnectionTask(void* pv) {
     //String serverIP = "172.30.1.79";
     //String serverIP = "192.168.137.1";
     String serverIP = "192.168.0.9";
-    sendItem dataToSend;
+    static sendItem dataToSend;
     webSockets -> begin(serverIP, 8000, ctx->machine_id, ctx->userEmail);
-    bool isConnected = true;
     while(true) {
         //Serial.println("[WIFI TASK] Polling WebSocket...");
         webSockets -> poll();
-        isConnected = webSockets -> isConnected();
-        // sendQueue에 데이터가 있으면 전송
-        if (!isConnected) {
-            sendItem dummy;
-            while (xQueueReceive(gSendQueue, &dummy, 0) == pdPASS) {
-                // 버퍼 초기화
-            }
-        }
-        else if(uxQueueMessagesWaiting(gSendQueue) > 0) {
-            if (xQueueReceive(gSendQueue, &dataToSend, pdMS_TO_TICKS(100)) == pdPASS) {
-                webSockets->sendMessage(dataToSend);
-                Serial.println("[WIFI TASK] Sent data: " + String(dataToSend.buf));
+        if(uxQueueMessagesWaiting(gSendQueue) > 0) {
+            if (xQueueReceive(gSendQueue, &dataToSend, 0) == pdPASS) {
+                if(!webSockets->sendMessage(dataToSend)) {
+                    Serial.println("[WIFI TASK] Data send failed.");
+                }
             }
         }
 
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
 }
 

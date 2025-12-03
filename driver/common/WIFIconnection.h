@@ -28,6 +28,9 @@ public:
     
     // 메시지 라우팅
     void routeMessage();
+
+    // tick
+    void tick();
     
     // 연결 상태 확인
     bool isConnected();

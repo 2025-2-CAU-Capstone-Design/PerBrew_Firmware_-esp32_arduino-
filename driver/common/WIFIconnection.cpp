@@ -80,6 +80,7 @@ bool HttpConnectionManager::begin(const String& serverIP, uint16_t port, String 
                   serverIP.c_str(), port, path.c_str());
     wsClient.onEvent(webSocketEvent);
     wsClient.setReconnectInterval(5000);  // 5초마다 재연결 시도
+    wsClient.enableHeartbeat(15000, 3000, 2);        
     wsClient.begin(serverIP.c_str(), port, path.c_str());
     delay(3000);
     //wsClient.enableHeartbeat(15000, 3000, 2);  // Ping: 15초, Pong timeout: 3초, 재시도: 2회
@@ -88,6 +89,7 @@ bool HttpConnectionManager::begin(const String& serverIP, uint16_t port, String 
     
     return true;
 }
+
 
 // 콜백 함수
 void HttpConnectionManager::webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
@@ -98,7 +100,6 @@ void HttpConnectionManager::webSocketEvent(WStype_t type, uint8_t* payload, size
 
 // 실제 이벤트 처리
 void HttpConnectionManager::handleEvent(WStype_t type, uint8_t* payload, size_t length) {
-    setLastReceivedMessage(String((char*)payload));
     switch(type) {
         case WStype_DISCONNECTED:
             Serial.println("[WIFI] Disconnected");
@@ -110,7 +111,8 @@ void HttpConnectionManager::handleEvent(WStype_t type, uint8_t* payload, size_t 
             
         case WStype_TEXT:
             Serial.printf("[WIFI] Received: %s\n", payload);
-            if(isConnected()){
+            if (payload && length > 0) {
+                setLastReceivedMessage(String((char*)payload));
                 routeMessage();
             }
             break;
@@ -120,11 +122,11 @@ void HttpConnectionManager::handleEvent(WStype_t type, uint8_t* payload, size_t 
             break;
             
         case WStype_PING:
-            //Serial.println("[WIFI] Got Ping");
+            Serial.println("[WIFI] Got Ping");
             break;
             
         case WStype_PONG:
-            //Serial.println("[WIFI] Got Pong");
+            Serial.println("[WIFI] Got Pong");
             break;
             
         case WStype_ERROR:
@@ -143,12 +145,11 @@ bool HttpConnectionManager::sendMessage(sendItem& sendData) {
         Serial.println("[WIFI] Not connected!");
         return false;
     }
-    String jsonStr(sendData.buf);
 
-    bool success = wsClient.sendTXT(jsonStr);
+    bool success = wsClient.sendTXT(sendData.buf);
     
     if (success) {
-        Serial.printf("[WIFI TASK] Sent data: %s\n", String(sendData.buf));
+        Serial.printf("[WIFI TASK] Sent data: %s\n", sendData.buf);
     } else {
         Serial.println("[WIFI] Send Failed!");
     }
@@ -158,7 +159,11 @@ bool HttpConnectionManager::sendMessage(sendItem& sendData) {
 void HttpConnectionManager::routeMessage() {
     // getLastReceivedMessage()는 반환 후 초기화하므로 한 번만 호출
     String receivedMsg = getLastReceivedMessage();
-    cmdItem command;
+    static cmdItem command;
+    if (receivedMsg.length() == 0) {
+        return;
+    }
+    
     auto& doc = jsonDoc;
     auto error = deserializeJson(doc, receivedMsg);
     if(error){
@@ -183,10 +188,16 @@ void HttpConnectionManager::routeMessage() {
         else if (type == "START_BREW" || type == "STOP_BREW" ||
              type == "REGISTER_MACHINE" || type == "LOADCELL_VALUE" ||
              type == "BREW_STATUS")
-            {
+            {        
+                if(gCommandQueue == nullptr){
+                    Serial.println("[WIFI] ERROR: gCommandQueue is NULL!");
+                    return;
+                }
+                memset(&command, 0, sizeof(cmdItem));
                 SAFE_COPY_TO_BUFFER(command, type);
-                if(gCommandQueue != nullptr){
-                    xQueueSend(gCommandQueue, &command, 0);
+                if(xQueueSend(gCommandQueue, &command, pdMS_TO_TICKS(100)) != pdTRUE) {
+                    Serial.println("[WIFI] Failed to send command to queue!");
+                } else {
                     Serial.println("[WIFI] Command sent to queue: " + type);
                 }
             }

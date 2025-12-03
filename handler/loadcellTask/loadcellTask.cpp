@@ -5,9 +5,13 @@
 extern QueueHandle_t gSendQueue;
 extern SharedState gShared;
 
+
+
 void LoadCellTask(void* pv) {
     LoadCellDriver* loadcell = ((DriverContext*)pv)->loadcell;
     DriverContext* ctx = (DriverContext*)pv;
+    static StaticJsonDocument<256> doc;
+    static sendItem item;
 
     if (!loadcell->begin(128, 5)) {
         Serial.println("[LoadCellTask] Loadcell begin failed");
@@ -31,7 +35,7 @@ void LoadCellTask(void* pv) {
         }
 
         // WiFi 송신 큐 전송
-        StaticJsonDocument<256> doc;
+        doc.clear();
         doc["machine_id"] = ctx->machine_id;
         doc["type"] = "WEIGHT";
 
@@ -39,10 +43,9 @@ void LoadCellTask(void* pv) {
         data["value"] = w;
         data["unit"]  = "g";
 
-        sendItem item;
-        serializeJson(doc, item.buf, sizeof(item.buf));
         Serial.println("[LoadCellTask] Sending weight data: " + String(item.buf));
         // 큐 전송
+        JSON_TO_SENDITEM(item, doc);
         xQueueSendToBack(gSendQueue, &item, 0);
 
         vTaskDelay(200 / portTICK_PERIOD_MS);

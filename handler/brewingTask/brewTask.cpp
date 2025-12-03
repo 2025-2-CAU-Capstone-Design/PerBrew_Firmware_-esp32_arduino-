@@ -46,13 +46,13 @@ static bool isTempStable() {
 }
 
 static void sendBrewStatus(DriverContext* driver, const char* status) {
-    StaticJsonDocument<128> doc;
+    static StaticJsonDocument<128> doc;
+    static sendItem item;
     doc["machine_id"] = driver->machine_id;
     doc["type"]      = "BREW_STATUS";
     doc["status"]    = status;
 
-    sendItem item;
-    serializeJson(doc, item.buf, sizeof(item.buf));
+    JSON_TO_SENDITEM(item, doc);
     xQueueSendToBack(gSendQueue, &item, 0);
 }
 
@@ -176,6 +176,9 @@ void stopAll(DriverContext* driver) {
 void BrewTask(void* pv) {
     DriverContext* driver = (DriverContext*)pv;
     RecipeInfo currentRecipe;
+    static StaticJsonDocument<256> doc;
+    static sendItem item;
+    static cmdItem cmd;
     bool hasRecipe = false;
 
     while(true) {
@@ -188,15 +191,15 @@ void BrewTask(void* pv) {
             Serial.println("[BREW] Recipe loaded.");
         }
         // 커맨드 큐 처리
-        String cmd;
         if(xQueueReceive(gCommandQueue, &cmd, 0) == pdTRUE){
-            if(cmd == "START_BREW") {
+            String cmdStr(cmd.buf);
+            if(cmdStr == "START_BREW") {
                 if(hasRecipe) {
                     driver->status = BrewStatus::BREWSTART;
                     Serial.println("[BREW] START");
                 }
             } 
-            else if(cmd == "STOP_BREW") {
+            else if(cmdStr == "STOP_BREW") {
                 driver->status = BrewStatus::STOP;
                 Serial.println("[BREW] STOP");
             }
@@ -247,12 +250,12 @@ void BrewTask(void* pv) {
         case BrewStatus::STOP:
             setSendMode(SendMode::NONE);
             stopAll(driver);
+            doc.clear();
             driver->status = BrewStatus::IDLE;
-            StaticJsonDocument<256> doc;
             doc["machine_id"] = driver->machine_id;
             doc["type"] = "BREW_DONE";
-            sendItem item;
-            serializeJson(doc, item.buf, sizeof(item.buf));
+
+            JSON_TO_SENDITEM(item, doc);
             xQueueSendToBack(gSendQueue, &item, 0);
             break;
         }

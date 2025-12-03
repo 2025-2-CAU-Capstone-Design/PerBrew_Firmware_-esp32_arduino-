@@ -25,11 +25,11 @@ ConnectionContext connCtx;
 
 // ===== SETUP =====
 void setup() {
+    // ----- Queue 생성 -----
     Serial.begin(115200);
-    bootManager.begin();
-    vTaskDelay(500);
-
-    Serial.println("=== Coffee Machine Boot ===");
+    gRecipeQueue  = xQueueCreate(2, sizeof(RecipeInfo));
+    gCommandQueue = xQueueCreate(10, sizeof(cmdItem));
+    gSendQueue    = xQueueCreate(15, sizeof(sendItem));
 
     // ----- SharedState 초기화 -----
     gShared.mutex = xSemaphoreCreateMutex();
@@ -38,12 +38,10 @@ void setup() {
     gShared.tempStable    = false;
     gShared.currentSendMode = SendMode::NONE;
     //gShared.machine_id = bootManager.getmachine_id();
-
-    // ----- Queue 생성 -----
-    gRecipeQueue  = xQueueCreate(2, sizeof(RecipeInfo));
-    gCommandQueue = xQueueCreate(10, sizeof(cmdItem));
-    gSendQueue    = xQueueCreate(200, sizeof(sendItem));
-
+    
+    Serial.println("=== Coffee Machine Boot ===");
+    bootManager.begin();
+    vTaskDelay(500);
     // ----- DriverContext 초기화 -----
     driver.arranging = new ArrangingDriver();
     driver.pouring   = new PouringSectionDriver();
@@ -69,19 +67,21 @@ void setup() {
     connCtx.wifiTask       = nullptr;
 
     // ----- Connection Supervisor Task 시작 -----
+
+
     xTaskCreate(
         ConnectionSupervisorTask,
         "ConnectionSupervisorTask",
-        8192,
+        20480,
         &connCtx,
         2,
         &connCtx.supervisorTask
     );
 
     // ----- LoadCell, Heater, Brew Task 시작 -----
-    xTaskCreatePinnedToCore(LoadCellTask, "LoadCellTask", 4096, &driver, 3, &driver.loadCellTaskHandle, 1);
-    xTaskCreate(HeaterTask,   "HeaterTask",   4096, &driver, 3, nullptr);
-    xTaskCreate(BrewTask,     "BrewTask",     4096, &driver, 2, nullptr);
+    xTaskCreatePinnedToCore(LoadCellTask, "LoadCellTask", 10240, &driver, 3, &driver.loadCellTaskHandle, 1);
+    xTaskCreatePinnedToCore(HeaterTask,   "HeaterTask",   10240, &driver, 3, nullptr, 1);
+    xTaskCreate(BrewTask,     "BrewTask",     16384, &driver, 2, nullptr);
 
     Serial.println("=== Setup Complete ===");
 }

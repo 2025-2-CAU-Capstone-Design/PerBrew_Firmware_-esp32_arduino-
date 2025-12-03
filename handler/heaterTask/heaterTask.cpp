@@ -9,6 +9,8 @@ void HeaterTask(void* pv) {
     RecipeInfo recipe = ((DriverContext*)pv)->recipe;
     HeaterDriver* heater = ((DriverContext*)pv)->heater;
     DriverContext* ctx = (DriverContext*)pv;
+    static sendItem item;
+    static StaticJsonDocument<256> doc;
 
     heater->begin();
 
@@ -41,7 +43,7 @@ void HeaterTask(void* pv) {
         else if(heater->isCompleted()) status = "COMPLETED";
         
         // JSON 생성
-        StaticJsonDocument<256> doc;
+        doc.clear();
         doc["machine_id"] = ctx->machine_id;
         doc["type"] = "TEMP";
         doc["status"] = status;
@@ -49,11 +51,11 @@ void HeaterTask(void* pv) {
         JsonObject data = doc.createNestedObject("data");
         data["value"] = temp;
 
-        sendItem item;
-        serializeJson(doc, item.buf, sizeof(item.buf));
+
         Serial.println("[HeaterTask] Sending temperature data: " + String(item.buf));
+        JSON_TO_SENDITEM(item, doc);
         xQueueSendToBack(gSendQueue, &item, 0);
 
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
