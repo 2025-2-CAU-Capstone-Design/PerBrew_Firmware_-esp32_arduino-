@@ -32,6 +32,14 @@ struct PouringStatus {
     PouringError lastError = PouringError::NONE;
 };
 
+enum class PouringTechnique {
+    CENTER,          // 중심부 집중 주수
+    SPIRAL_OUT,      // 바깥쪽 나선형 주수
+    SPIRAL_IN,       // 안쪽 나선형 주수
+    PULSE,           // 펄스형 주수
+    CIRCULAR,        // 원형 주수
+};
+
 class PouringSectionDriver {
     public:
         PouringSectionDriver();
@@ -62,6 +70,15 @@ class PouringSectionDriver {
         void tiltNozzle(long distanceCM); // 거리 기반 틸트
         void tiltNozzleToAngle(float degrees); // 각도 기반 틸트
         void stopTilt();
+
+        void applyTechnique(PouringTechnique technique);
+        void executeTechnique(PouringTechnique technique, float intensity = 1.0f);
+        
+        void circularPour(float intensity);    // 원형 패턴
+        void centerPour(float intensity);      // 고정된 중심 주수
+        void spiralOutPour(float intensity);   // 바깥쪽 나선형 주수
+        void spiralInPour(float intensity);    // 안쪽 나선형 주수
+
         
         // 펌프 제어 (개선된 버전)
         void startPump(int pwmValue = 128);

@@ -97,6 +97,17 @@ void runGrind(DriverContext* driver, RecipeInfo& recipe) {
     vTaskDelay(1500 / portTICK_PERIOD_MS);
 }
 
+
+// 푸어링 모드 결정
+PouringTechnique stringToTechnique(const String& tech) {
+    if (tech == "center") return PouringTechnique::CENTER;
+    if (tech == "spiral_out") return PouringTechnique::SPIRAL_OUT;
+    if (tech == "spiral_in") return PouringTechnique::SPIRAL_IN;
+    if (tech == "pulse") return PouringTechnique::PULSE;
+    if (tech == "circular") return PouringTechnique::CIRCULAR;
+    return PouringTechnique::CENTER;  // 기본값
+}
+
 // 서버 이동 + 브루잉
 void runBrew(DriverContext* driver, RecipeInfo& recipe) {
     Serial.println("[BREW] Pouring steps start");
@@ -110,7 +121,8 @@ void runBrew(DriverContext* driver, RecipeInfo& recipe) {
     for (uint8_t i = 0; i < recipe.pouring_steps_count; ++i) {
         auto& step = recipe.pouring_steps[i];
         vTaskDelay(200 / portTICK_PERIOD_MS);
-
+        PouringTechnique tech = stringToTechnique(step.technique);
+        driver->pouring->applyTechnique(tech);
         // 펌프 ON (PWM 값 조정 필요)
         float w = readSharedWeight();               // - 값 (-800.0g)
         driver->pouring->startPump(200);
@@ -137,6 +149,7 @@ void runBrew(DriverContext* driver, RecipeInfo& recipe) {
             diff *= -1.0f;                             
             if (diff >= step.water_g - POUR_TARGET_EPSILON) {
                 driver->pouring->stopPump();
+                driver->pouring->stopRotation();
                 break;
             }
             vTaskDelay(1);
@@ -152,6 +165,8 @@ void runBrew(DriverContext* driver, RecipeInfo& recipe) {
     Serial.println("[BREW] All pouring steps done");
     sendBrewStatus(driver, "DONE");
 }
+
+
 
 //========================= STOP ALL =========================
 // 모든 기능 중지

@@ -6,6 +6,66 @@
 #include "../../driver/pouring/pouringSection_driver.cpp"
 #include "../../driver/arranging/arranging_driver.cpp"
 
+/*
+요청 (클라이언트 -> 서버)
+{
+  "recipe_id": 1
+}
+
+서버에서 ESP32로 전송하는 데이터
+{
+  "type": "RECIPE",
+  "payload": {
+    "recipe_id": 1,
+    "recipe_name": "Handsome Wade V60 Recipe",
+    "dose_g": 15.0,
+    "water_temperature_c": 94.0,
+    "total_water_g": 235.0,
+    "total_brew_time_s": 180,
+    "brew_ratio": 15.67,
+    "grind_level": "90",
+    "grind_microns": 631,
+    "rinsing": true,
+    "pouring_steps": [
+      {
+        "step_number": 1,
+        "water_g": 30.0,
+        "pour_time_s": 15.0,
+        "wait_time_s": 40.0,
+        "bloom_time_s": null,
+        "technique": "center"
+      },
+      {
+        "step_number": 2,
+        "water_g": 70.0,
+        "pour_time_s": 20.0,
+        "wait_time_s": 0.0,
+        "bloom_time_s": null,
+        "technique": "spiral_out"
+      },
+      {
+        "step_number": 3,
+        "water_g": 70.0,
+        "pour_time_s": 20.0,
+        "wait_time_s": 0.0,
+        "bloom_time_s": null,
+        "technique": "spiral_out"
+      },
+      {
+        "step_number": 4,
+        "water_g": 65.0,
+        "pour_time_s": 15.0,
+        "wait_time_s": 0.0,
+        "bloom_time_s": null,
+        "technique": "spiral_out"
+      }
+    ]
+  }
+}
+
+
+*/
+
 // 드라이버 인스턴스들
 GrinderDriver grinder;
 LoadCellDriver loadcell;
@@ -160,6 +220,14 @@ void testGrindingSection() {
     }
   }
 }
+void emergencyStop() {
+  Serial.println("\n[SAFETY] Emergency Stop - Shutting down all drivers...");
+  grinder.stopGrinding();
+  heater.stopHeating();
+  pouring.stopPump();
+  pouring.stopRotation();
+  Serial.println("[SAFETY] All drivers stopped.");
+}
 
 // =================================================================================
 // 2. Heater Section
@@ -175,7 +243,7 @@ void testHeaterSection() {
     Serial.println("4. Manual Update Loop (Monitor & Control)");
     Serial.println("0. Back to main menu");
     Serial.print("Enter choice: ");
-    
+    emergencyStop();
     int choice = waitForInput();
     
     switch(choice) {
@@ -215,6 +283,7 @@ void testHeaterSection() {
         break;
       }
       case 0:
+        emergencyStop();
         heater.stopHeating();
         return;
       default:
@@ -281,6 +350,7 @@ void testLoadcellSection() {
         break;
       }
       case 0:
+        emergencyStop();
         return;
       default:
         Serial.println("Invalid choice!");
@@ -359,6 +429,7 @@ void testPouringSection() {
         break;
       }
       case 0:
+        emergencyStop();
         pouring.stopPump();
         pouring.stopRotation();
         return;

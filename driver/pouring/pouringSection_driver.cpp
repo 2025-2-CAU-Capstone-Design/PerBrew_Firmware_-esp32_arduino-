@@ -129,7 +129,7 @@ void PouringSectionDriver::startRotation(bool clockwise, int pwmValue) {
     this->rotationRunning_ = true;
     status_.isRotating = rotationRunning_;
 
-    Serial.print("Rotation start: dir=");
+    Serial.print("[PouringSection]Rotation start: dir=");
     Serial.print(clockwise ? "CW" : "CCW");
     Serial.print(", PWM=");
     Serial.println(pwmValue);
@@ -149,7 +149,7 @@ void PouringSectionDriver::tiltNozzle(long distanceCM) {
     if (distanceCM < PouringConfig::MIN_DISTANCE_CM || 
         distanceCM > PouringConfig::MAX_DISTANCE_CM) {
         setError(PouringError::DISTANCE_OUT_OF_RANGE);
-        Serial.println("Tilt distance out of range\n");
+        Serial.println("[PouringSection] Tilt distance out of range");
         return;
     }
     //값 보정 필요
@@ -161,7 +161,7 @@ void PouringSectionDriver::tiltNozzleToAngle(float degrees) {
     // 1.8도 스텝 모터 기준
     constexpr float STEPS_PER_DEGREE = 200.0f / 360.0f;
     
-    Serial.println("Tilting to angle: " + String(degrees) + " degrees");
+    Serial.println("[PouringSection] Tilting to angle: " + String(degrees) + " degrees");
     long targetSteps = lround(degrees * STEPS_PER_DEGREE);
 
     tiltStepper_.moveTo(targetSteps);
@@ -173,6 +173,47 @@ void PouringSectionDriver::stopTilt() {
     status_.isTilting = false;
 }
 
+void PouringSectionDriver::applyTechnique(PouringTechnique technique) {
+    switch(technique) {
+        case PouringTechnique::CENTER:
+            centerPour(1.0f);
+            break;
+        case PouringTechnique::SPIRAL_OUT:
+            spiralOutPour(1.0f);
+            break;
+        case PouringTechnique::SPIRAL_IN:
+            spiralInPour(1.0f);
+            break;
+        case PouringTechnique::CIRCULAR:
+            circularPour(1.0f);
+            break;
+    }
+}
+
+void PouringSectionDriver::centerPour(float intensity) {
+    stopRotation();
+    tiltNozzleToAngle(0);  // 중심 위치
+    Serial.println("[[PouringSection]] Center Pour");
+}
+
+void PouringSectionDriver::spiralOutPour(float intensity) {
+    int rotationPWM = (int)(200 * intensity); 
+    startRotation(true, rotationPWM);  
+    Serial.println("[[PouringSection]] Spiral Out Pour");
+}
+
+void PouringSectionDriver::spiralInPour(float intensity) {
+    int rotationPWM = (int)(200 * intensity);
+    startRotation(false, rotationPWM);  // 반시계방향
+    Serial.println("[[PouringSection]] Spiral In Pour");
+}
+
+void PouringSectionDriver::circularPour(float intensity) {
+    int rotationPWM = (int)(180 * intensity);
+    startRotation(true, rotationPWM);
+    tiltNozzleToAngle(0);  // 틸트는 중심 고정
+    Serial.println("[[PouringSection]] Circular Pour");
+}
 
 //============================================================================================================================================
 // === 펌프 제어 ===
@@ -183,7 +224,7 @@ void PouringSectionDriver::startPump(int pwmValue) {
     status_.isPumping = (pwmValue > 0);
     status_.currentPumpPWM = pwmValue;
     
-    Serial.print("Pump started with PWM: ");
+    Serial.print("[PouringSection] Pump started with PWM: ");
     Serial.println(pwmValue);
 }
 
@@ -191,7 +232,7 @@ void PouringSectionDriver::stopPump() {
     analogWrite(PumpPin, 0);
     status_.isPumping = false;
     status_.currentPumpPWM = 0;
-    Serial.println("Pump stopped");
+    Serial.println("[PouringSection] Pump stopped");
 }
 
 void PouringSectionDriver::setPumpSpeed(int pwmValue) {
@@ -214,7 +255,7 @@ void PouringSectionDriver::setPumpSpeedPercent(float percent) {
 void PouringSectionDriver::setError(PouringError error) {
     status_.lastError = error;
     if (error != PouringError::NONE) {
-        Serial.print("PouringSection Error: ");
+        Serial.print("[PouringSection] Error: ");
         Serial.println(static_cast<int>(error));
     }
 }
