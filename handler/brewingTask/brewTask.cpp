@@ -45,7 +45,7 @@ static bool isTempStable() {
     return s;
 }
 
-static void sendBrewStatus(DriverContext* driver, const char* status) {
+/*static void sendBrewStatus(DriverContext* driver, const char* status) {
     static StaticJsonDocument<128> doc;
     static sendItem item;
     doc["machine_id"] = driver->machine_id;
@@ -54,6 +54,10 @@ static void sendBrewStatus(DriverContext* driver, const char* status) {
 
     JSON_TO_SENDITEM(item, doc);
     xQueueSendToBack(gSendQueue, &item, 0);
+}
+*/
+static void sendBrewStatus(DriverContext* driver, const char* status) {
+    Serial.println(String("[BREW STATUS] ") + status);
 }
 
 //========================= Step Functions =========================
@@ -69,21 +73,14 @@ void runRinse(DriverContext* driver, RecipeInfo& recipe) {
     vTaskDelay(1500 / portTICK_PERIOD_MS);
 
     // 린싱 -> 물 온도 도달 대기
-    const float target = recipe.water_temperature_c - 2.0f;
-    while (true) {
-        // 개선 -> 린싱 중 중단 처리
-        if (driver->status == BrewStatus::STOP) { stopAll(driver); return; }
-        float t = readSharedTemp();
-        if (t >= target) break;
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
-
     driver->pouring->startPump(RINSE_PUMP_PWM);
 
-    const uint32_t RINSE_PUMP_MS = 4000;
+    const uint32_t RINSE_PUMP_MS = 15000;
     uint32_t startMs = millis();
     while ((millis() - startMs) < RINSE_PUMP_MS) {
-        if (driver->status == BrewStatus::STOP) { stopAll(driver); return; }
+        if (driver->status == BrewStatus::STOP) { 
+            stopAll(driver); return; 
+        }
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
     driver->pouring->stopPump();
@@ -98,6 +95,7 @@ void runGrind(DriverContext* driver, RecipeInfo& recipe) {
     while (driver->grinder->isGrinding()) {
         // 개선 -> 분쇄 중 중단 처리
         if (driver->status == BrewStatus::STOP) { stopAll(driver); return; }
+        driver->grinder->update();
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     driver->arranging->move(200);    // 실제 하드웨어에 맞게 조정
@@ -129,6 +127,15 @@ void runBrew(DriverContext* driver, RecipeInfo& recipe) {
         vTaskDelay(200 / portTICK_PERIOD_MS);
 
         // 펌프 ON (PWM 값 조정 필요)
+        /* 
+            --- PWM 제어 로직 ---
+            PWM 값에 따라 유량이 달라지므로,
+            추후 유량 측정 후 보정 로직 추가 필요
+            ex) 40초 동안 200g 주수 -> PWM 180 기준 유량 5g/s
+            수도 코드
+            int targetPWM = basePWM + k * intensity; // intensity: 0.0 ~ 1.0
+            driver->pouring->setPumpSpeed(targetPWM);
+        */
         driver->pouring->startPump(200);
         driver->pouring->applyTechnique(stringToTechnique(step.technique));
         // 목표 수량까지 로드셀 모니터링
@@ -197,68 +204,95 @@ void BrewTask(void* pv) {
             if(cmdStr == "START_BREW") {
                 if(hasRecipe) {
                     driver->status = BrewStatus::BREWSTART;
-                    Serial.println("[BREW] START");
+                    Serial.println("[BREW] START COMMAND RECEIVED");
+                } else {
+                    Serial.println("[BREW] Cannot Start: No Recipe");
                 }
             } 
             else if(cmdStr == "STOP_BREW") {
                 driver->status = BrewStatus::STOP;
-                Serial.println("[BREW] STOP");
+                Serial.println("[BREW] STOP COMMAND RECEIVED");
             }
         }
         switch (driver->status) {
-        case BrewStatus::IDLE:
-            // 아무 것도 안 함
-            setSendMode(SendMode::NONE);
-            break;
+            case BrewStatus::IDLE:
+                // 아무 것도 안 함
+                setSendMode(SendMode::NONE);
+                break;
+    //====================================================================
 
-        case BrewStatus::BREWSTART:
-            // heater에 목표 온도 지시만 내림
-            driver->heater->startHeating(currentRecipe.water_temperature_c);
-            driver->status = BrewStatus::HEATING;
-            sendBrewStatus(driver, "HEATING");
-            setSendMode(SendMode::BREWING);
-            break;
+            case BrewStatus::BREWSTART: case BrewStatus::HEATING: case BrewStatus::RINSING:
+                // heater에 목표 온도 지시만 내림
+                if(driver->status == BrewStatus::BREWSTART) {
+                    driver->heater->startHeating(currentRecipe.water_temperature_c);
+                    driver->status = BrewStatus::HEATING;
+                    sendBrewStatus(driver, "HEATING");
+                    //setSendMode(SendMode::BREWING);
+                }
+                else if(driver->status == BrewStatus::HEATING) {
+                    // 일정시간 대기 -> 바로 린싱
+                    // 센서가 상단에 부착되어 있기 때문에, 일정시간 가열 후, 린싱 과정에서 정확한 값 조정
+                    unsigned long baseMillis = millis();
+                    while(true){
+                        unsigned long currMillis = millis();
+                        if (driver->status == BrewStatus::STOP) { break; } 
+                        if(currMillis - baseMillis > 15000) { // 15초 타임아웃
+                            Serial.println("[BREW] Heating Timeout!");
+                            driver->status = BrewStatus::RINSING;
+                            sendBrewStatus(driver, "RINSING");
+                            break;
+                        }
+                        else { 
+                            vTaskDelay(100 / portTICK_PERIOD_MS);
+                        }
+                    }
+                }
+                else if(driver->status == BrewStatus::RINSING) {
+                    runRinse(driver, currentRecipe); 
+                    driver->status = BrewStatus::GRINDING;
+                    break;
+                }
+    /*
+            case BrewStatus::HEATING:
+                // gShared.tempStable만 참조 (mutex 보호)
+                if (isTempStable()) {
+                    driver->status = BrewStatus::RINSING;
+                }
+                break;
 
-        case BrewStatus::HEATING:
-            // gShared.tempStable만 참조 (mutex 보호)
+            case BrewStatus::RINSING:
+                setSendMode(SendMode::NONE);
+                if (currentRecipe.rinsing) {
+                    runRinse(driver, currentRecipe); 
+                }
+                driver->status = BrewStatus::GRINDING;
+                break;
+    */
+    //====================================================================
+            case BrewStatus::GRINDING:
+                setSendMode(SendMode::NONE);
+                runGrind(driver, currentRecipe);
+                driver->status = BrewStatus::POURING;
+                break;
 
-            if (isTempStable()) {
-                driver->status = BrewStatus::RINSING;
-            }
-            break;
+            case BrewStatus::POURING:
+                setSendMode(SendMode::BREWING);
+                runBrew(driver, currentRecipe); 
+                driver->status = BrewStatus::IDLE;
+                stopAll(driver); 
+                break;
 
-        case BrewStatus::RINSING:
-            setSendMode(SendMode::NONE);
-            if (currentRecipe.rinsing) {
-                runRinse(driver, currentRecipe); 
-            }
-            driver->status = BrewStatus::GRINDING;
-            break;
+            case BrewStatus::STOP:
+                setSendMode(SendMode::NONE);
+                stopAll(driver);
+                doc.clear();
+                driver->status = BrewStatus::IDLE;
+                doc["machine_id"] = driver->machine_id;
+                doc["type"] = "BREW_DONE";
 
-        case BrewStatus::GRINDING:
-            setSendMode(SendMode::NONE);
-            runGrind(driver, currentRecipe);
-            driver->status = BrewStatus::POURING;
-            break;
-
-        case BrewStatus::POURING:
-            setSendMode(SendMode::BREWING);
-            runBrew(driver, currentRecipe); 
-            driver->status = BrewStatus::IDLE;
-            stopAll(driver); 
-            break;
-
-        case BrewStatus::STOP:
-            setSendMode(SendMode::NONE);
-            stopAll(driver);
-            doc.clear();
-            driver->status = BrewStatus::IDLE;
-            doc["machine_id"] = driver->machine_id;
-            doc["type"] = "BREW_DONE";
-
-            JSON_TO_SENDITEM(item, doc);
-            xQueueSendToBack(gSendQueue, &item, 0);
-            break;
+                JSON_TO_SENDITEM(item, doc);
+                xQueueSendToBack(gSendQueue, &item, 0);
+                break;
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }

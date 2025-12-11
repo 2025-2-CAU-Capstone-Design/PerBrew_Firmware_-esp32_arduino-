@@ -105,7 +105,7 @@ void PouringSectionDriver::spiralPour(float intensity) {
 
 void PouringSectionDriver::circularPour(float intensity) {
     int rotationPWM = (int)(180 * intensity);
-    tiltStepper_.setSpeed(200);
+    tiltStepper_.setSpeed(100);
     while(digitalRead(PouringTiltEndStopPin) == LOW) {
         tiltStepper_.runSpeed();
     }
@@ -118,8 +118,8 @@ void PouringSectionDriver::circularPour(float intensity) {
 
 // 노즐을 제로 위치로 이동 -> 첫 구동 때 영점 미리 잡아두기(손으로)
 void PouringSectionDriver::tiltToZero() {
-    tiltStepper_.setSpeed(200); // 일정 속도로 틸트
-    tiltStepper_.moveTo(2000); // 충분히 큰 값으로 이동 명령
+    tiltStepper_.setSpeed(100); // 일정 속도로 틸트
+    tiltStepper_.moveTo(500); // 충분히 큰 값으로 이동 명령
     while (tiltStepper_.distanceToGo() != 0) {
         tiltStepper_.run();
     }

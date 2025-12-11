@@ -62,10 +62,10 @@ int GrinderDriver::getCurrentClicks() {
 }
 
 // testSetClicks removed — use diagnostic helpers or direct manual tests instead
-
 bool GrinderDriver::setClicks(int target) {
     long targetClicks = constrain(target, CLICK_MIN, CLICK_MAX);
-    int current = getCurrentClicks();
+    long current = getCurrentClicks();
+    const long kClickTolerance = 1; // 허용 오차 (클릭 수)
 
     // If already at target (difference less than 1 click), nothing to do
     long diff = targetClicks - current;
@@ -77,19 +77,19 @@ bool GrinderDriver::setClicks(int target) {
 
     // 이동 방향 설정
     Serial.print("Moving from " + String(current) + " to " + String(targetClicks) + " clicks.");
-    int dir = (targetClicks > current) ? 1 : -1;
+    long dir = (targetClicks > current) ? 1 : -1;
     stepper_.setSpeed(dir * (kMaxSpeed_ * 0.25f));
     // Iterative attempts: perform up to maxAttempts of open-loop move + ADC verification
     const unsigned int maxAttempts = 3;
 
     for (unsigned int attempt = 1; attempt <= maxAttempts; ++attempt) {
-        int nowClicks = getCurrentClicks();
+        long nowClicks = getCurrentClicks();
         long remaining = targetClicks - nowClicks;
         if (remaining == 0) {
             Serial.println("Already at target before attempt");
             return true;
         }
-        int attemptDir = (remaining > 0) ? 1 : -1;
+        long attemptDir = (remaining > 0) ? 1 : -1;
         unsigned long stepsThisAttempt = (unsigned long)(labs(remaining) * (long)stepsPerClick_);
 
         Serial.printf("Attempt %u/%u: remaining=%ld stepsThisAttempt=%lu\n", attempt, maxAttempts, remaining, stepsThisAttempt);
@@ -104,7 +104,7 @@ bool GrinderDriver::setClicks(int target) {
                 ++moved;
                 if ((moved & 0x3F) == 0) Serial.println("STEP GENERATED: total=" + String(moved));
             }
-            delay(1);
+            vTaskDelay(1);
         }
         stepper_.stop();
 
@@ -132,7 +132,11 @@ bool GrinderDriver::setClicks(int target) {
     return false;
 }
  
-// === 전류센서 값 읽기 ===
+
+///========== 전류값 기반 그라인딩 완료 감지 로직 ==========///
+//============ 미사용 함수임 ============//
+// === 전류센서 값 읽기 // ===
+/*
 int GrinderDriver::readCurrentSensor() {
     return analogRead(GrindMoterADC);
 }
@@ -156,6 +160,18 @@ bool GrinderDriver::isGrindingComplete(int threshold) {
     return (current <= threshold);
 }
 
+/////////////////////////////////////////////////////////////////////////
+// ADC -> 클릭 수 변환, 안씀 (왜 만들었지..? 테스트용?)
+int GrinderDriver::clicksToADC(int clicks) {
+    float ratio = float(clicks - CLICK_MIN) / float(CLICK_MAX - CLICK_MIN); 
+    int adc = int(lround(ADC_MIN + ratio * (ADC_MAX - ADC_MIN)));
+    if (adc < ADC_MIN) adc = ADC_MIN;
+    if (adc >= ADC_MAX) adc = ADC_MAX;
+    return adc;
+}
+
+*/
+/////////////////////////////////////////////////////////////
 
 // === 분쇄 시작 ===
 void GrinderDriver::startGrinding(uint32_t max_duration_ms) {
@@ -163,7 +179,7 @@ void GrinderDriver::startGrinding(uint32_t max_duration_ms) {
         Serial.println("Already grinding");
         return; // 이미 그라인딩 중
     }
-
+    grindingState_ = GrinderState::GRINDING;
     grindingStartTime_ = millis();
     maxGrindingDuration_ = max_duration_ms;
     stableIdleCount_ = 0;
@@ -171,8 +187,6 @@ void GrinderDriver::startGrinding(uint32_t max_duration_ms) {
 
     // 그라인딩 모터 시작
     analogWrite(GrindPWMPin, GRINDING_PWM);
-    grindingState_ = GrinderState::GRINDING;
-
     Serial.println("Grinding started..."); // 디버깅용 출력
 }
 
@@ -197,7 +211,6 @@ void GrinderDriver::update() {
     updateGrindingState();
 }
 
-
 int GrinderDriver::adcToClicks(int adc){
     float ratio = float(adc - ADC_MIN) / float(ADC_MAX - ADC_MIN);
     //Serial.println("ADC Ratio: " + String(ratio));
@@ -207,14 +220,6 @@ int GrinderDriver::adcToClicks(int adc){
     return clicks;
 }
 
-// ADC -> 클릭 수 변환, 안씀 (왜 만들었지..? 테스트용?)
-int GrinderDriver::clicksToADC(int clicks) {
-    float ratio = float(clicks - CLICK_MIN) / float(CLICK_MAX - CLICK_MIN); 
-    int adc = int(lround(ADC_MIN + ratio * (ADC_MAX - ADC_MIN)));
-    if (adc < ADC_MIN) adc = ADC_MIN;
-    if (adc >= ADC_MAX) adc = ADC_MAX;
-    return adc;
-}
 
 void GrinderDriver::updateGrindingState() {
     unsigned long currentTime = millis();
@@ -254,6 +259,7 @@ void GrinderDriver::handleCurrentMonitoring() {
         if(stableIdleCount_ >= STABLE_COUNT_THRESHOLD){
             stopGrinding();
             Serial.println("[Grinder] Grinding complete detected by current sensor."); // 디버깅용 출력
+            grindingState_ = GrinderState::COMPLETED;
         }
     }
     // 부하가 다시 감지된 경우 -> counter 초기화, 계속 분쇄
