@@ -108,7 +108,8 @@ void runGrind(DriverContext* driver, RecipeInfo& recipe) {
 // 푸어링 모드 결정
 PouringTechnique stringToTechnique(const String& tech) {
     if (tech == "center") return PouringTechnique::CENTER;
-    if (tech == "spiral") return PouringTechnique::SPIRAL;
+    if (tech == "spiral_out") return PouringTechnique::SPIRAL_OUT;
+    if (tech == "spiral_in") return PouringTechnique::SPIRAL_IN;
     if (tech == "pulse") return PouringTechnique::PULSE;
     if (tech == "circular") return PouringTechnique::CIRCULAR;
     return PouringTechnique::CENTER;  // 기본값

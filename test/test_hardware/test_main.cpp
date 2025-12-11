@@ -1,10 +1,19 @@
+#include "../driver/data_format.h"
 #include <Arduino.h>
-#include "../../driver/pin_map.h"
-#include "../../driver/grinder/grinder_driver.cpp"
-#include "../../driver/loadcell/loadcell_driver.cpp"
-#include "../../driver/heater/heater_driver.cpp"
-#include "../../driver/pouring/pouringSection_driver.cpp"
-#include "../../driver/arranging/arranging_driver.cpp"
+#include "../handler/brewingTask/brewTask.h"
+#include "../handler/heaterTask/heaterTask.h"
+#include "../handler/loadcellTask/loadcellTask.h"
+#include "../handler/connectionTask/connectionTask.h"
+
+#include "../driver/arranging/arranging_driver.h"
+#include "../driver/pouring/pouringSection_driver.h"
+#include "../driver/grinder/grinder_driver.h"
+#include "../driver/loadcell/loadcell_driver.h"
+#include "../driver/heater/heater_driver.h"
+#include "../driver/common/boot.h"
+#include "../driver/common/BLEconnection.h"
+#include "../driver/common/WIFIconnection.h"
+
 
 /*
 요청 (클라이언트 -> 서버)
@@ -367,26 +376,16 @@ void testPouringSection() {
   
   while(true) {
     Serial.println("\nPouring Test Menu:");
-    Serial.println("1. Measure distance (Sonar)");
     Serial.println("2. Start Pump");
     Serial.println("3. Stop Pump");
-    Serial.println("4. Tilt Nozzle (Auto by Distance)");
     Serial.println("5. Start Rotation (DC Motor)");
     Serial.println("6. Stop Rotation");
-    Serial.println("7. Tilt Nozzle (Angle)");
     Serial.println("0. Back to main menu");
     Serial.print("Enter choice: ");
     
     int choice = waitForInput();
     
     switch(choice) {
-      case 1: {
-        long distance = pouring.measureDistanceCM();
-        Serial.print("Distance: ");
-        Serial.print(distance);
-        Serial.println(" cm");
-        break;
-      }
       case 2: {
         Serial.print("Enter PWM (0-255): ");
         int pwm = waitForInput();
@@ -397,14 +396,6 @@ void testPouringSection() {
       case 3: {
         pouring.stopPump();
         Serial.println("Pump Stopped.");
-        break;
-      }
-      case 4: {
-        Serial.print("Enter target distance (cm) to simulate: ");
-        long dist = (long)waitForInput();
-        Serial.println("Tilting nozzle...");
-        pouring.tiltNozzle(dist);
-        Serial.println("Done.");
         break;
       }
       case 5: {
@@ -419,13 +410,6 @@ void testPouringSection() {
       case 6: {
         pouring.stopRotation();
         Serial.println("Rotation Stopped.");
-        break;
-      }
-      case 7: {
-        Serial.print("Enter angle (degrees): ");
-        float angle = (float)waitForInput();
-        pouring.tiltNozzleToAngle(angle);
-        Serial.println("Tilt Done.");
         break;
       }
       case 0:

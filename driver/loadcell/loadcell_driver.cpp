@@ -12,7 +12,7 @@ bool LoadCellDriver::begin(uint8_t gain, uint8_t samplesForTare) {
         defaultSamples_ = 1;
     else 
         defaultSamples_ = samplesForTare;
-    
+    Serial.println("[LoadCell] LoadCellDriver initialized");
     return tare(defaultSamples_);
 }
 

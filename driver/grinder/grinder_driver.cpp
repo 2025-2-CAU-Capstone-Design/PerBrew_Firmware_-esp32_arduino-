@@ -53,6 +53,7 @@ void GrinderDriver::begin() {
 
     currentClicks_ = adcToClicks(readADCValue());
     grindingState_ = GrinderState::IDLE;
+    Serial.println("[Grinder]GrinderDriver initialized");
 }
 
 int GrinderDriver::getCurrentClicks() {

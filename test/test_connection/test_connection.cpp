@@ -1,12 +1,18 @@
+#include "../driver/data_format.h"
 #include <Arduino.h>
-#include <WiFi.h>
-#include "../../driver/data_format.h"
+#include "../handler/brewingTask/brewTask.h"
+#include "../handler/heaterTask/heaterTask.h"
+#include "../handler/loadcellTask/loadcellTask.h"
+#include "../handler/connectionTask/connectionTask.h"
 
-// .h 대신 .cpp를 포함하여 구현부를 컴파일 단위에 포함시킵니다.
-#include "../../driver/common/boot.cpp"
-#include "../../driver/common/BLEconnection.cpp"
-#include "../../driver/common/WIFIconnection.cpp"
-
+#include "../driver/arranging/arranging_driver.h"
+#include "../driver/pouring/pouringSection_driver.h"
+#include "../driver/grinder/grinder_driver.h"
+#include "../driver/loadcell/loadcell_driver.h"
+#include "../driver/heater/heater_driver.h"
+#include "../driver/common/boot.h"
+#include "../driver/common/BLEconnection.h"
+#include "../driver/common/WIFIconnection.h"
 // === 테스트용 전역 객체 ===
 BootManager bootManager;
 BLEConnectionManager bleManager;
@@ -83,7 +89,9 @@ void loop() {
             case 4:
                 if (currentState == TestState::CONNECTED) {
                     String msg = "{\"type\":\"TEST\",\"machineID\":\"TEST_DEV\",\"data\":\"Hello\"}";
-                    wifiManager.sendMessage(msg);
+                    sendItem sendData;
+                    SAFE_COPY_TO_BUFFER(sendData, msg);
+                    wifiManager.sendMessage(sendData);
                     Serial.println("[CMD] Test message sent.");
                 } else {
                     Serial.println("[ERR] Not connected to server.");

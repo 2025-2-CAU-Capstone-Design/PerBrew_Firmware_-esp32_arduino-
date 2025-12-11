@@ -7,12 +7,12 @@ namespace {
 
 ArrangingDriver::ArrangingDriver()
         // AccelStepper constructor for DRIVER mode expects (stepPin, dirPin)
-        : stepper_(AccelStepper::DRIVER, 16, 4),
+        : stepper_(AccelStepper::DRIVER, rearrangingMotorStepPin, rearrangingMotorDirPin),
             directionCW_(true) {}
 
 void ArrangingDriver::begin() {
-    pinMode(16, OUTPUT);
-    pinMode(4, OUTPUT);
+    pinMode(rearrangingMotorStepPin, OUTPUT);
+    pinMode(rearrangingMotorDirPin, OUTPUT);
     stepper_.setMaxSpeed(DEFAULT_SPEED);
     stepper_.setAcceleration(DEFAULT_ACCELERATION);
     stepper_.setMinPulseWidth(5);; 
@@ -20,7 +20,7 @@ void ArrangingDriver::begin() {
         stepper_.runSpeed();
     }*/
     stepper_.setCurrentPosition(0);
-    Serial.println("ArrangingDriver initialized");
+    Serial.println("[Arranging]ArrangingDriver initialized");
 }
 
 void ArrangingDriver::setDirection(bool clockwise) {

@@ -26,9 +26,8 @@ struct PouringStatus {
 
 enum class PouringTechnique {
     CENTER,          // 중심부 집중 주수
-    //SPIRAL_OUT,      // 바깥쪽 나선형 주수
-    //SPIRAL_IN,       // 안쪽 나선형 주수
-    SPIRAL,
+    SPIRAL_OUT,      // 바깥쪽 나선형 주수
+    SPIRAL_IN,       // 안쪽 나선형 주수
     PULSE,           // 펄스형 주수
     CIRCULAR,        // 원형 주수
 };
@@ -50,17 +49,17 @@ class PouringSectionDriver {
 
 
         // 노즐 틸트 제어
-        void stopTilt();            
-        void tiltToZero();
+        void tiltNozzle(long distanceCM); // 거리 기반 틸트
+        void tiltNozzleToAngle(float degrees); // 각도 기반 틸트
+        void stopTilt();
 
         void applyTechnique(PouringTechnique technique);
         void executeTechnique(PouringTechnique technique, float intensity = 1.0f);
         
         void circularPour(float intensity);    // 원형 패턴
         void centerPour(float intensity);      // 고정된 중심 주수
-        //void spiralOutPour(float intensity);   // 바깥쪽 나선형 주수
-        //void spiralInPour(float intensity);    // 안쪽 나선형 주수
-        void spiralPour(float intensity);
+        void spiralOutPour(float intensity);   // 바깥쪽 나선형 주수
+        void spiralInPour(float intensity);    // 안쪽 나선형 주수
 
         
         // 펌프 제어 (개선된 버전)
@@ -97,7 +96,7 @@ class PouringSectionDriver {
         bool tiltingDirection_ = true; // true: CW, false: CCW
 
         // 스텝 모터 객체
-        //AccelStepper rotationStepper_;
+        // AccelStepper rotationStepper_; // DC 모터로 변경됨, 제거
         AccelStepper tiltStepper_;
         
         // 상태 관리
@@ -106,6 +105,6 @@ class PouringSectionDriver {
         
         // 내부 함수
         void setError(PouringError error);
-        //bool validateDistance(long distance);
-        //void updateSteppers();
+        bool validateDistance(long distance);
+        void updateSteppers();
 };
