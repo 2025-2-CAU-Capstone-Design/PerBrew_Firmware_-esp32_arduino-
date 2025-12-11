@@ -237,6 +237,7 @@ void ConnectionSupervisorTask(void* pv) {
         if (ctx->wifi != nullptr && !(ctx->wifi->isConnected()) && !ctx->bleModeActive) {
             websocketDeadCount++;
             Serial.printf("[SUP] WebSocket disconnected (%d/%d)\n", websocketDeadCount, WIFI_MAX_DEAD_CHECK * 2);
+            ctx->wifi->reconnect();
             if (websocketDeadCount >= WIFI_MAX_DEAD_CHECK * 2) {
                 Serial.println("[SUP] WebSocket seems dead, restarting BLE provisioning");
                 boot->clearWiFiCredentials();

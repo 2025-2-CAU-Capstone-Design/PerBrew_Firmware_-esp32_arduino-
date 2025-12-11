@@ -97,6 +97,7 @@ void HeaterDriver::stopHeating() {
 // === 상태 업데이트 === 
 void HeaterDriver::update() {
     if (heaterState_ == HeaterState::IDLE || heaterState_ == HeaterState::ERROR || heaterState_ == HeaterState::COMPLETED) {
+        stopHeating();
         return;  // 동작할 필요 없음
     }
     updateHeatingState();
@@ -186,6 +187,7 @@ void HeaterDriver::handleTemperatureControl() {
         if (consecutiveErrors_ >= MAX_CONSECUTIVE_ERRORS) {
             Serial.println("[Heater] Too many consecutive temperature reading errors");
             heaterState_ = HeaterState::ERROR;
+            stopHeating();
         }
         return;
     }

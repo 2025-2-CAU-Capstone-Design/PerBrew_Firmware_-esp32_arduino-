@@ -55,6 +55,9 @@ public:
     void setRecipeParsing(String *recipeJson);
     RecipeInfo getRecipeParsing();
     
+    // 재연결 시도
+    bool reconnect();
+    
 private:
     WebSocketsClient wsClient;
     String serverUrl;
@@ -73,9 +76,6 @@ private:
     
     // 이벤트 처리
     void handleEvent(WStype_t type, uint8_t* payload, size_t length);
-    
-    // 재연결 시도
-    bool reconnect();
     
     // static 인스턴스 포인터 (콜백)
     static HttpConnectionManager* instance;

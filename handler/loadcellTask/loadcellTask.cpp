@@ -38,7 +38,7 @@ void LoadCellTask(void* pv) {
         doc.clear();
         doc["machine_id"] = ctx->machine_id;
         doc["type"] = "WEIGHT";
-
+        /*
         JsonObject data = doc.createNestedObject("data");
         data["value"] = w;
         data["unit"]  = "g";
@@ -47,7 +47,7 @@ void LoadCellTask(void* pv) {
         // 큐 전송
         JSON_TO_SENDITEM(item, doc);
         xQueueSendToBack(gSendQueue, &item, 0);
-
+        */
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }
 }

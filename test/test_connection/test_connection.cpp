@@ -83,7 +83,9 @@ void loop() {
             case 4:
                 if (currentState == TestState::CONNECTED) {
                     String msg = "{\"type\":\"TEST\",\"machineID\":\"TEST_DEV\",\"data\":\"Hello\"}";
-                    wifiManager.sendMessage(msg);
+                    sendItem sendData;
+                    SAFE_COPY_TO_BUFFER(sendData, msg);
+                    wifiManager.sendMessage(sendData);
                     Serial.println("[CMD] Test message sent.");
                 } else {
                     Serial.println("[ERR] Not connected to server.");

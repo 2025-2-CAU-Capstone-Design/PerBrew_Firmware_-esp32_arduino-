@@ -19,7 +19,7 @@ void runGrind(DriverContext* driver, RecipeInfo& recipe);
 void runBrew(DriverContext* driver, RecipeInfo& recipe);
 
 // === Stop All ===
-static void stopAll(DriverContext* driver);
+void stopAll(DriverContext* driver);
 
 // === Main Brew FSM ===
 void BrewTask(void* pv);

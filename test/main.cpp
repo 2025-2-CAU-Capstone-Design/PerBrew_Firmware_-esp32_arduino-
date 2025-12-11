@@ -3,74 +3,16 @@
 #include "../handler/brewingTask/brewTask.h"
 #include "../handler/heaterTask/heaterTask.h"
 #include "../handler/loadcellTask/loadcellTask.h"
+#include "../handler/connectionTask/connectionTask.h"
 
 #include "../driver/arranging/arranging_driver.h"
 #include "../driver/pouring/pouringSection_driver.h"
 #include "../driver/grinder/grinder_driver.h"
 #include "../driver/loadcell/loadcell_driver.h"
 #include "../driver/heater/heater_driver.h"
-
-
-/*
-요청 (클라이언트 -> 서버)
-{
-  "recipe_id": 1
-}
-
-서버에서 ESP32로 전송하는 데이터
-{
-  "type": "RECIPE",
-  "payload": {
-    "recipe_id": 1,
-    "recipe_name": "Handsome Wade V60 Recipe",
-    "dose_g": 15.0,
-    "water_temperature_c": 94.0,
-    "total_water_g": 235.0,
-    "total_brew_time_s": 180,
-    "brew_ratio": 15.67,
-    "grind_level": "90",
-    "grind_microns": 631,
-    "rinsing": true,
-    "pouring_steps": [
-      {
-        "step": 1,
-        "water_g": 30.0,
-        "pour_time_s": 15.0,
-        "wait_time_s": 40.0,
-        "bloom_time_s": null,
-        "technique": "center"
-      },
-      {
-        "step": 2,
-        "water_g": 70.0,
-        "pour_time_s": 20.0,
-        "wait_time_s": 0.0,
-        "bloom_time_s": null,
-        "technique": "spiral_out"
-      },
-      {
-        "step": 3,
-        "water_g": 70.0,
-        "pour_time_s": 20.0,
-        "wait_time_s": 0.0,
-        "bloom_time_s": null,
-        "technique": "spiral_out"
-      },
-      {
-        "step": 4,
-        "water_g": 65.0,
-        "pour_time_s": 15.0,
-        "wait_time_s": 0.0,
-        "bloom_time_s": null,
-        "technique": "spiral_out"
-      }
-    ]
-  }
-}
-
-
-*/
-
+#include "../driver/common/boot.h"
+#include "../driver/common/BLEconnection.h"
+#include "../driver/common/WIFIconnection.h"
 
 // ===== 전역 객체 =====
 QueueHandle_t gRecipeQueue  = nullptr;
@@ -98,6 +40,7 @@ void setup() {
     //gShared.machine_id = bootManager.getmachine_id();
     
     Serial.println("=== Coffee Machine Boot ===");
+    bootManager.begin();
     vTaskDelay(500);
     // ----- DriverContext 초기화 -----
     driver.arranging = new ArrangingDriver();
@@ -108,15 +51,15 @@ void setup() {
     driver.status    = BrewStatus::IDLE;
 
     // ----- Machine ID 설정 -----
-    //driver.machine_id = bootManager.getmachine_id();
+    driver.machine_id = bootManager.getmachine_id();
     Serial.println("[machine_id] " + driver.machine_id);
 
     // ----- ConnectionContext 초기화 -----
     connCtx.boot = &bootManager;
-    //connCtx.ble  = new BLEConnectionManager();
-    //connCtx.wifi = new HttpConnectionManager();
-    //connCtx.machine_id = bootManager.getmachine_id();
-    //connCtx.userEmail  = bootManager.getUserEmail();
+    connCtx.ble  = new BLEConnectionManager();
+    connCtx.wifi = new HttpConnectionManager();
+    connCtx.machine_id = bootManager.getmachine_id();
+    connCtx.userEmail  = bootManager.getUserEmail();
     
 
     connCtx.supervisorTask = nullptr;
@@ -125,7 +68,7 @@ void setup() {
 
     // ----- Connection Supervisor Task 시작 -----
 
-    /*
+
     xTaskCreate(
         ConnectionSupervisorTask,
         "ConnectionSupervisorTask",
@@ -134,72 +77,17 @@ void setup() {
         2,
         &connCtx.supervisorTask
     );
-    */
 
     // ----- LoadCell, Heater, Brew Task 시작 -----
     xTaskCreatePinnedToCore(LoadCellTask, "LoadCellTask", 10240, &driver, 3, &driver.loadCellTaskHandle, 1);
     xTaskCreatePinnedToCore(HeaterTask,   "HeaterTask",   10240, &driver, 3, nullptr, 1);
     xTaskCreate(BrewTask,     "BrewTask",     16384, &driver, 2, nullptr);
 
-    RecipeInfo testRecipe;
-    //testRecipe.recipe_id = 1;
-    testRecipe.water_temperature_c = 94.0;
-    testRecipe.rinsing = true;
-    testRecipe.grind_level = 90; // int 또는 String 타입에 맞춰 조정 필요
-    testRecipe.pouring_steps_count = 4;
-
-    // Step 1
-    testRecipe.pouring_steps[0].step = 1;
-    testRecipe.pouring_steps[0].water_g = 60.0;
-    testRecipe.pouring_steps[0].pour_time_s = 30.0;
-    testRecipe.pouring_steps[0].wait_time_s = 15.0;
-    testRecipe.pouring_steps[0].technique  = "center";
-
-    // Step 2
-    testRecipe.pouring_steps[1].step = 2;
-    testRecipe.pouring_steps[1].water_g = 140.0;
-    testRecipe.pouring_steps[1].pour_time_s = 60.0;
-    testRecipe.pouring_steps[1].wait_time_s = 15.0;
-    testRecipe.pouring_steps[1].technique  = "center";
-
-    // Step 3
-    testRecipe.pouring_steps[2].step = 3;
-    testRecipe.pouring_steps[2].water_g = 60.0;
-    testRecipe.pouring_steps[2].pour_time_s = 30.0;
-    testRecipe.pouring_steps[2].wait_time_s = 0.0;
-    testRecipe.pouring_steps[2].technique = "center";
-
-    xQueueSend(gRecipeQueue, &testRecipe, 0);
-    Serial.println("[TEST] Default Recipe Loaded into Queue");
-
     Serial.println("=== Setup Complete ===");
-    Serial.println("Type 'ok' to start brewing...");
 }
 
 void loop() {
-    // 시리얼 입력 대기
-    if (Serial.available() > 0) {
-        String input = Serial.readStringUntil('\n');
-        input.trim(); // 공백/개행 제거
-
-        if (input.equalsIgnoreCase("ok")) {
-            cmdItem cmd;
-            // cmdItem 구조체 정의에 따라 buf 크기가 다를 수 있으니 주의 (보통 char buf[32] 등)
-            snprintf(cmd.buf, sizeof(cmd.buf), "START_BREW");
-            
-            if (xQueueSend(gCommandQueue, &cmd, 0) == pdTRUE) {
-                Serial.println("[CMD] Sent START_BREW");
-            } else {
-                Serial.println("[CMD] Queue Full");
-            }
-        } else if (input.equalsIgnoreCase("stop")) {
-            cmdItem cmd;
-            snprintf(cmd.buf, sizeof(cmd.buf), "STOP_BREW");
-            xQueueSend(gCommandQueue, &cmd, 0);
-            Serial.println("[CMD] Sent STOP_BREW");
-        }
-    }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    // FreeRTOS 사용 시 loop는 비워둔다
 }
 
 

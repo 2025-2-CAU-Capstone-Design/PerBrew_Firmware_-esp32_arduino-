@@ -43,6 +43,7 @@ void HeaterTask(void* pv) {
         else if(heater->isCompleted()) status = "COMPLETED";
         
         // JSON 생성
+        /*
         doc.clear();
         doc["machine_id"] = ctx->machine_id;
         doc["type"] = "TEMP";
@@ -55,7 +56,7 @@ void HeaterTask(void* pv) {
         Serial.println("[HeaterTask] Sending temperature data: " + String(item.buf));
         JSON_TO_SENDITEM(item, doc);
         xQueueSendToBack(gSendQueue, &item, 0);
-
+        */
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
