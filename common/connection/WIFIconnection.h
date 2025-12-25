@@ -8,12 +8,12 @@
 
 #pragma once
 #include <Arduino.h>
-#include <./data_format.h>
+#include <../common/data_format.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <WebSocketsClient.h> 
 #include <HTTPClient.h>
-#include "boot.h"
+#include "../common/boot.h"
 
 
 class HttpConnectionManager {

@@ -1,8 +1,8 @@
 #include "./connectionTask.h"
-#include "../driver/common/BLEconnection.h"
-#include "../driver/common/WIFIconnection.h"
-#include "../driver/common/boot.h"
-#include "../driver/data_format.h"
+#include "../common/connection/BLEconnection.h"
+#include "../common/connection/WIFIconnection.h"
+#include "../common/boot.h"
+#include "../common/data_format.h"
 /*
     String machine_id = "ESP32_001"; // 실제 머신 ID 변수 사용
     String url = "/ws/machine/" + machine_id;
@@ -149,8 +149,9 @@ void WIFIConnectionTask(void* pv) {
     HttpConnectionManager* webSockets = ctx->wifi;
     //String serverIP = "172.30.1.74";
     //String serverIP = "172.30.1.79";
-    //String serverIP = "192.168.137.1";
-    String serverIP = "192.168.0.9";
+    String serverIP = "192.168.137.1";
+    //String serverIP = "192.168.0.9";
+    //String serverIP = "172.30.1.16";
     static sendItem dataToSend;
     webSockets -> begin(serverIP, 8000, ctx->machine_id, ctx->userEmail);
     while(true) {
@@ -171,7 +172,7 @@ void WIFIConnectionTask(void* pv) {
 
 
 // ===== Supervisor Task =====
-void ConnectionSupervisorTask(void* pv) {
+void connectionSupervisorTask(void* pv) {
     ConnectionContext* ctx = (ConnectionContext*)pv;
     BootManager* boot      = ctx->boot;
 

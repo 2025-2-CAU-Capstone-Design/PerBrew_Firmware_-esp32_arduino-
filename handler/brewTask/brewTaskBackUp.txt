@@ -1,0 +1,212 @@
+#include "./brewTask.h"
+
+
+
+// Read temperature in °C (averaged over samples)
+float readTemperature(int samples = 10) {
+  float average = 0.0;
+  for (int i = 0; i < samples; i++) {
+    average += analogRead(pin::Heater_Thermistor_ADC);
+    delay(10);
+  }
+  average /= samples;
+
+  // Convert ADC to resistance
+  if (average == 0) return -1;  // Error
+  float resistance = SERIES_RESISTOR * (ADC_MAX / average - 1.0);
+
+  // Beta formula to temperature (°C)
+  float steinhart = resistance / THERMISTOR_NOMINAL;     // (R/Ro)
+  steinhart = log(steinhart);                            // ln(R/Ro)
+  steinhart /= B_COEFFICIENT;                            // 1/B * ln(R/Ro)
+  steinhart += 1.0 / (TEMPERATURE_NOMINAL + 273.15);     // + (1/To)
+  steinhart = 1.0 / steinhart;                           // In=vert
+  steinhart -= 273.15;                                   // Convert to °C
+
+  return steinhart;
+}
+
+// Stepper control (same as before)
+void setDir(bool highDir) {
+  digitalWrite(pin::Rearranging_Motor_Dir, highDir ? HIGH : LOW);
+}
+
+void stepOnce() {
+  digitalWrite(pin::Rearranging_Motor_Step, HIGH);
+  delayMicroseconds(2);
+  digitalWrite(pin::Rearranging_Motor_Step, LOW);
+}
+
+void home() {
+  setDir(false);  // Dir: LOW for homing
+  while (digitalRead(pin::Rearranging_EndStop_DI) == HIGH) {  // Active LOW, external pull-up
+    stepOnce();
+    delayMicroseconds(5000);  // Slow for safe homing
+  }
+}
+
+void moveSteps(int steps, bool dir, int minDelay = 1200, int startDelay = 5000, int accelSteps = 100) {
+  if (steps <= 0) return;
+  
+  setDir(dir);
+  
+  int rampSteps = min(accelSteps, steps / 3);
+  int delayDiff = startDelay - minDelay;
+  
+  for (int i = 0; i < steps; i++) {
+    stepOnce();
+    
+    int currentDelay;
+    if (i < rampSteps) {
+      currentDelay = startDelay - (delayDiff * i / rampSteps);
+    } else if (i >= steps - rampSteps) {
+      currentDelay = minDelay + (delayDiff * (steps - 1 - i) / rampSteps);
+    } else {
+      currentDelay = minDelay;
+    }
+    
+    delayMicroseconds(currentDelay);
+  }
+}
+
+bool initializeScale(){
+  scale.begin(pin::Weighing_DT, pin::Weighing_SCK);
+  scale.set_offset(-107000);
+  scale.set_scale(420);  // TODO: Calibrate with known weights!
+  scale.tare();  // Tare with full water tank
+  delay(1000);
+  Serial.print("after tare");
+  Serial.println(scale.get_units(4));
+  delay(1000);
+}
+
+void brewTask();
+
+void setup() {
+  Serial.begin(115200);
+
+  // Pin modes
+  pinMode(pin::Rearranging_Motor_Dir, OUTPUT);
+  pinMode(pin::Rearranging_Motor_Step, OUTPUT);
+  pinMode(pin::Rearranging_EndStop_DI, INPUT_PULLUP
+);  // External 10k pull-up required
+
+  pinMode(pin::Grinding_Motor_PWM, OUTPUT);
+  pinMode(pin::Pump_PWM, OUTPUT);
+  pinMode(pin::Heater_PWM, OUTPUT);
+
+  pinMode(pin::Heater_Thermistor_ADC, INPUT);
+  pinMode(pin::Weighing_DT, INPUT);
+  pinMode(pin::Weighing_SCK, OUTPUT);
+
+  // HX711 init
+  scale.begin(pin::Weighing_DT, pin::Weighing_SCK);
+  scale.set_offset(-107000);
+  scale.set_scale(420);  // TODO: Calibrate with known weights!
+  scale.tare();  // Tare with full water tank
+  delay(1000);
+  Serial.print("after tare");
+  Serial.println(scale.get_units(4));
+  delay(1000);
+
+  // Start Brewing Sequence
+
+  // 1. Homing
+  home();
+  moveSteps(50, true);  // Back off 50 steps (Dir HIGH)
+
+  // 2. Rinsing + Preheat heater to ~80°C
+  // Run pump for rinsing (e.g., 30g water)
+  float rinseAmount = 200.0;  // Adjust as needed
+  float startWeight = scale.get_units(4);
+  
+  analogWrite(pin::Heater_PWM, 255);
+  while (readTemperature() < 80.0) {  // Heat to ~78-80°C
+    delay(10);
+  }
+  analogWrite(pin::Heater_PWM, 0);
+  analogWrite(pin::Pump_PWM, 25);
+  float scaleVal = scale.get_units(4);
+
+  while (scaleVal > startWeight - rinseAmount) {
+    float temp = readTemperature();
+    if (temp >= 80.0) {
+      analogWrite(pin::Heater_PWM, 0);  // Stop heating once reached
+    }
+    else{
+      analogWrite(pin::Heater_PWM, 255);
+    }
+    scaleVal = scale.get_units(4);
+    Serial.print("t :" );
+    Serial.print(temp);
+    Serial.print("s :" );
+    Serial.println(scaleVal);
+    delay(20);
+  }
+  analogWrite(pin::Pump_PWM, 0);
+  analogWrite(pin::Heater_PWM, 0);  // Heater off after rinsing
+  delay(1000);
+  // 3. Move to Grinding Section
+  moveSteps(650, true);
+
+  // 4. Grinding (20 seconds) - Heater off
+  analogWrite(pin::Grinding_Motor_PWM, 255);
+  delay(20000);
+  analogWrite(pin::Grinding_Motor_PWM, 0);
+
+  // 5. Move to Pouring Section
+  moveSteps(650, false);
+
+  // Tare scale again (now with grounds + dripped rinse water)
+  scale.tare();
+  delay(1000);
+  Serial.print("after tare");
+  Serial.println(scale.get_units(4));
+  delay(1000);
+  // 6. Pouring: 3 pours of 70g each, 65s bloom/wait between
+  float pourAmount = 80;
+  float currentTarget = -pourAmount;
+
+  for (int i = 0; i < 3; i++) {
+    // Heat water before this pour (target 80°C)
+    analogWrite(pin::Heater_PWM, 255);
+    while (readTemperature() < 75.0) {  // Heat to ~78-80°C
+      delay(10);
+    }
+    analogWrite(pin::Heater_PWM, 0);
+
+    // Pour
+    analogWrite(pin::Pump_PWM, 70);
+    delay(200);
+    analogWrite(pin::Pump_PWM, 30);
+    scaleVal = scale.get_units(4);
+    Serial.println(scaleVal);
+    while (scaleVal > currentTarget) {  // Weight increases as water is poured (scale measures source tank)
+      float temp = readTemperature();
+      if (temp >= 95.0) {
+        analogWrite(pin::Heater_PWM, 0);  // Stop heating once reached
+      }
+      else{
+        analogWrite(pin::Heater_PWM, 255);
+      }
+      scaleVal = scale.get_units(4);
+      Serial.print("t :" );
+      Serial.print(temp);
+      Serial.print("s :" );
+      Serial.println(scaleVal);
+    
+      delay(20);    
+    }
+    analogWrite(pin::Pump_PWM, 0);
+    analogWrite(pin::Heater_PWM, 0);  // Stop heating once reached
+
+    if (i < 2) {
+      delay(5000);  // 65 seconds wait
+    }
+    currentTarget -= pourAmount;
+  }
+
+  Serial.println("Brewing complete!");
+}
+
+

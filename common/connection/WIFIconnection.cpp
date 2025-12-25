@@ -187,7 +187,14 @@ void HttpConnectionManager::routeMessage() {
         }
         else if (type == "START_BREW" || type == "STOP_BREW" ||
              type == "REGISTER_MACHINE" || type == "LOADCELL_VALUE" ||
-             type == "BREW_STATUS")
+             type == "BREW_STATUS" || type == "FINISH_WEIGHING" ||
+             type == "FINISH_CLICK_ADJUST" || type == "FINISH_WEIGHING" ||
+             type == "START_GRINDING" || type == "START_POURING" ||
+             type == "START_RINSING" || type == "JUST_GRINDING" ||
+             type == "JUST_POURING" || type == "JUST_TARE_SCALE" ||
+             type == "JUST_GRINDING_STOP" || type == "JUST_POURING_STOP" ||
+             type == "JUST_TARE_SCALE_STOP" || type =="TARE" ||
+             type == "FINISH_GRINDING" || type == "STOP_GRINDING") 
             {        
                 if(gCommandQueue == nullptr){
                     Serial.println("[WIFI] ERROR: gCommandQueue is NULL!");

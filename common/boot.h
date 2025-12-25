@@ -3,7 +3,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <nvs_flash.h>
-#include "../driver/data_format.h"
+#include "../common/data_format.h"
     
 /*
     부팅 설정 관리 클래스

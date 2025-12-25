@@ -1,5 +1,5 @@
 #pragma once
-#include "../../driver/data_format.h"
+#include "../common/data_format.h"
 
 struct SharedState {
     float currentWeight;

@@ -186,6 +186,8 @@ void testGrindingSection() {
     Serial.println("2. Set clicks position");
     Serial.println("3. Start Grinding (Manual Stop)");
     Serial.println("4. Stop Grinding");
+    Serial.println("5. Check ADC current");
+
     Serial.println("0. Back to main menu");
     Serial.print("Enter choice: ");
     
@@ -218,6 +220,16 @@ void testGrindingSection() {
         Serial.println("Stopping grinding motor...");
         grinder.stopGrinding();
         Serial.println("Motor OFF.");
+        break;
+      }
+      case 5: {
+        Serial.println("Checking ADC current...");
+        int result = grinder.readCurrentSensor();
+        int resultAVG = grinder.readCurrentAverage(10);
+        Serial.print("ADC Current: ");
+        Serial.println(result);
+        Serial.print("ADC Avg Current: ");
+        Serial.println(resultAVG);
         break;
       }
       case 0:
@@ -257,7 +269,7 @@ void testHeaterSection() {
     
     switch(choice) {
       case 1: {
-        double temp = heater.readThermistor();
+        double temp = heater.updateTemperature();
         Serial.print("Raw Temp: "); Serial.println(temp);
         Serial.print("Filtered Temp: "); Serial.println(heater.getCurrentTemperature());
         break;
@@ -307,65 +319,12 @@ void testHeaterSection() {
 // =================================================================================
 void testLoadcellSection() {
   Serial.println("\n=== LoadCell Section Test ===");
-  
+  loadcell.tare(10); // 영점 조정
   while(true) {
-    Serial.println("\nLoadCell Test Menu:");
-    Serial.println("1. Read current weight");
-    Serial.println("2. Tare (10 samples)");
-    Serial.println("3. Calibrate with known mass");
-    Serial.println("4. Continuous monitoring");
-    Serial.println("0. Back to main menu");
-    Serial.print("Enter choice: ");
-    
-    int choice = waitForInput();
-    
-    switch(choice) {
-      case 1: {
-        loadcell.updateWeightBlocking();
-        float weight = loadcell.getWeight();
-        Serial.print("Current weight: ");
-        Serial.println(weight);
-        break;
-      }
-      case 2: {
-        Serial.println("Performing tare (10 samples)...");
-        bool success = loadcell.tare(); 
-        Serial.print("Tare ");
-        Serial.println(success ? "SUCCESS" : "FAILED");
-        break;
-      }
-      case 3: {
-        Serial.print("Enter known mass (g): ");
-        float mass = (float)waitForInput();
-        Serial.println("Place known mass...");
-        delay(2000);
-        bool success = loadcell.calibrate(mass);
-        Serial.println(success ? "Calibration SUCCESS" : "Calibration FAILED");
-        break;
-      }
-      case 4: {
-        Serial.println("Monitoring... Press any key to stop.");
-        while(Serial.available()) Serial.read();
-        
-        while (!Serial.available()) {
-          if (loadcell.isReady()) {
-            loadcell.updateWeightBlocking();
-            Serial.print("Weight: ");
-            Serial.println(loadcell.getWeight());
-          }
-          delay(200);
-        }
-        while(Serial.available()) Serial.read();
-        break;
-      }
-      case 0:
-        emergencyStop();
-        return;
-      default:
-        Serial.println("Invalid choice!");
-        break;
+        float f = loadcell.scale_.get_units(5); // 무게 갱신
+        Serial.println(f);
+        delay(250);
     }
-  }
 }
 
 // =================================================================================

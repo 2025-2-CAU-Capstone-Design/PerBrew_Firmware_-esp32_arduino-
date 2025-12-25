@@ -1,18 +1,17 @@
-#include "../driver/data_format.h"
-#include <Arduino.h>
-#include "../handler/brewingTask/brewTask.h"
-#include "../handler/heaterTask/heaterTask.h"
-#include "../handler/loadcellTask/loadcellTask.h"
-#include "../handler/connectionTask/connectionTask.h"
 
-#include "../driver/arranging/arranging_driver.h"
-#include "../driver/pouring/pouringSection_driver.h"
-#include "../driver/grinder/grinder_driver.h"
-#include "../driver/loadcell/loadcell_driver.h"
-#include "../driver/heater/heater_driver.h"
-#include "../driver/common/boot.h"
-#include "../driver/common/BLEconnection.h"
-#include "../driver/common/WIFIconnection.h"
+
+#include "../common/data_format.h"
+#include <Arduino.h>
+// #include "../handler/heaterTask/heaterTask.h"
+// #include "../handler/loadcellTask/loadcellTask.h"
+#include "../handler/connectionTask/connectionTask.h"
+#include "../handler/brewTask/brewTask.h"
+
+#include "../common/boot.h"
+#include "../common/connection/BLEconnection.h"
+#include "../common/connection/WIFIconnection.h"
+#include "../handler/shared/shared_state.h"
+
 
 // ===== 전역 객체 =====
 QueueHandle_t gRecipeQueue  = nullptr;
@@ -27,6 +26,21 @@ ConnectionContext connCtx;
 void setup() {
     // ----- Queue 생성 -----
     Serial.begin(115200);
+    pinMode(pin::Rearranging_Motor_Dir, OUTPUT);
+    pinMode(pin::Rearranging_Motor_Step, OUTPUT);
+    pinMode(pin::Rearranging_EndStop_DI, INPUT_PULLUP
+    );  // External 10k pull-up required
+
+    pinMode(pin::Grinding_Motor_ADC, INPUT);
+    pinMode(pin::Grinding_Motor_PWM, OUTPUT);
+    pinMode(pin::Pump_PWM, OUTPUT);
+    pinMode(pin::Heater_PWM, OUTPUT);
+
+    pinMode(pin::Heater_Thermistor_ADC, INPUT);
+    pinMode(pin::Weighing_DT, INPUT);
+    pinMode(pin::Weighing_SCK, OUTPUT);
+    pinMode(pin::Pouring_Rotation_PWM, OUTPUT);
+
     gRecipeQueue  = xQueueCreate(2, sizeof(RecipeInfo));
     gCommandQueue = xQueueCreate(10, sizeof(cmdItem));
     gSendQueue    = xQueueCreate(15, sizeof(sendItem));
@@ -37,17 +51,12 @@ void setup() {
     gShared.currentTemp   = 20.0f;
     gShared.tempStable    = false;
     gShared.currentSendMode = SendMode::NONE;
-    //gShared.machine_id = bootManager.getmachine_id();
+    gShared.machine_id = bootManager.getmachine_id();
     
     Serial.println("=== Coffee Machine Boot ===");
     bootManager.begin();
     vTaskDelay(500);
     // ----- DriverContext 초기화 -----
-    driver.arranging = new ArrangingDriver();
-    driver.pouring   = new PouringSectionDriver();
-    driver.grinder   = new GrinderDriver();
-    driver.heater    = new HeaterDriver();
-    driver.loadcell  = new LoadCellDriver();
     driver.status    = BrewStatus::IDLE;
 
     // ----- Machine ID 설정 -----
@@ -69,20 +78,20 @@ void setup() {
     // ----- Connection Supervisor Task 시작 -----
 
 
-    xTaskCreate(
-        ConnectionSupervisorTask,
-        "ConnectionSupervisorTask",
+    xTaskCreatePinnedToCore(
+        connectionSupervisorTask,
+        "connectionSupervisorTask",
         20480,
         &connCtx,
         2,
-        &connCtx.supervisorTask
+        &connCtx.supervisorTask,
+        0
     );
 
     // ----- LoadCell, Heater, Brew Task 시작 -----
-    xTaskCreatePinnedToCore(LoadCellTask, "LoadCellTask", 10240, &driver, 3, &driver.loadCellTaskHandle, 1);
-    xTaskCreatePinnedToCore(HeaterTask,   "HeaterTask",   10240, &driver, 3, nullptr, 1);
-    xTaskCreate(BrewTask,     "BrewTask",     16384, &driver, 2, nullptr);
-
+    //xTaskCreatePinnedToCore(LoadCellTask, "LoadCellTask", 10240, &driver, 3, &driver.loadCellTaskHandle, 1);
+    //xTaskCreatePinnedToCore(HeaterTask,   "HeaterTask",   10240, &driver, 3, nullptr, 1);
+    xTaskCreatePinnedToCore(brewTask, "BrewTask",     16384, &driver, 2, nullptr, 1);
     Serial.println("=== Setup Complete ===");
 }
 
@@ -91,54 +100,37 @@ void loop() {
 }
 
 
+/*
+  AnalogReadSerial
+
+  Reads an analog input on pin 0, prints the result to the Serial Monitor.
+  Graphical representation is available using Serial Plotter (Tools > Serial Plotter menu).
+  Attach the center pin of a potentiometer to pin A0, and the outside pins to +5V and ground.
+
+  This example code is in the public domain.
+
+  https://docs.arduino.cc/built-in-examples/basics/AnalogReadSerial/
+*/
+
+/*
+#include<Arduino.h>
+
+// the setup routine runs once when you press reset:
+void setup() {
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(115200);
+  analogWrite(23, 255);
+  analogWrite(19, 255);
+}
+
+// the loop routine runs over and over again forever:
+void loop() {
+  // read the input on analog pin 0:
+  int sensorValue = analogRead(39);
+  // print out the value you read:
+  Serial.println(sensorValue);
+  delay(100);
+  delay(1);  // delay in between reads for stability
+}*/
 
 
-
-/*    uint64_t chipid;
-
-    chipid = ESP.getEfuseMac(); // The chip ID is essentially its MAC address (length: 6 bytes)
-    
-    Serial.printf("ESP32 Chip ID = %04X", (uint16_t)(chipid >> 32)); // print High 2 bytes
-    Serial.printf("%08X\n", (uint32_t)chipid); // print Low 4bytes
-    Serial.println("---------------------------------");
-    
-    Serial.printf("Chip Revision %d\n", ESP.getChipRevision());
-    esp_chip_info_t chip_info;
-    esp_chip_info(&chip_info);
-    Serial.printf("Number of Core: %d\n", chip_info.cores);
-    Serial.printf("CPU Frequency: %d MHz\n", ESP.getCpuFreqMHz());
-    Serial.println();
-    
-    Serial.printf("Flash Chip Size = %d byte\n", ESP.getFlashChipSize());
-    Serial.printf("Flash Frequency = %d Hz\n", ESP.getFlashChipSpeed());
-    Serial.println();
-    
-    Serial.printf("ESP-IDF version = %s\n", esp_get_idf_version());
-    Serial.println();
-    
-    Serial.printf("Total Heap Size = %d\n", ESP.getHeapSize());
-    Serial.printf("Free Heap Size = %d\n", ESP.getFreeHeap());
-    Serial.printf("Lowest Free Heap Size = %d\n", ESP.getMinFreeHeap());
-    Serial.printf("Largest Heap Block = %d\n", ESP.getMaxAllocHeap());
-    Serial.println();
-    
-    uint8_t mac0[6];
-    esp_efuse_mac_get_default(mac0);
-    Serial.printf("Default Mac Address = %02X:%02X:%02X:%02X:%02X:%02X\r\n", mac0[0], mac0[1], mac0[2], mac0[3], mac0[4], mac0[5]);
-    
-    uint8_t mac3[6];
-    esp_read_mac(mac3, ESP_MAC_WIFI_STA);
-    Serial.printf("[Wi-Fi Station] Mac Address = %02X:%02X:%02X:%02X:%02X:%02X\r\n", mac3[0], mac3[1], mac3[2], mac3[3], mac3[4], mac3[5]);
-    
-    uint8_t mac4[6];
-    esp_read_mac(mac4, ESP_MAC_WIFI_SOFTAP);
-    Serial.printf("[Wi-Fi SoftAP] Mac Address = %02X:%02X:%02X:%02X:%02X:%02X\r\n", mac4[0], mac4[1], mac4[2], mac4[3], mac4[4], mac4[5]);
-    
-    uint8_t mac5[6];
-    esp_read_mac(mac5, ESP_MAC_BT);
-    Serial.printf("[Bluetooth] Mac Address = %02X:%02X:%02X:%02X:%02X:%02X\r\n", mac5[0], mac5[1], mac5[2], mac5[3], mac5[4], mac5[5]);
-    
-    uint8_t mac6[6];
-    esp_read_mac(mac6, ESP_MAC_ETH);
-    Serial.printf("[Ethernet] Mac Address = %02X:%02X:%02X:%02X:%02X:%02X\r\n", mac6[0], mac6[1], mac6[2], mac6[3], mac6[4], mac6[5]);
-    */

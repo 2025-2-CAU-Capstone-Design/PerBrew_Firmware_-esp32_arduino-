@@ -45,12 +45,22 @@ class BootManager;
 // ===== Brew Status =====
 enum class BrewStatus {
     IDLE,
-    BREWSTART,
+    TARE,
+    STARTBREW,
+    CLICKADJUST,
+    WEIGHING,
     RINSING,
-    HEATING,
     GRINDING,
+    STOP_GRINDING,
     POURING,
     STOP,
+
+    JUST_GRINDING,
+    JUST_POURING,
+    JUST_TARE_SCALE,
+    JUST_GRINDING_STOP,
+    JUST_POURING_STOP,
+    JUST_TARE_SCALE_STOP
 };
 
 
@@ -100,6 +110,8 @@ struct DriverContext {
 enum class SendMode {
     NONE,       // 아무것도 보내지 않음
     WEIGHT_ONLY, // 사용자 원두 측정 모드
+    CLICK_ADJUST, // 분쇄도 조정 모드
+    HEATING,
     BREWING     // 온도 + 무게 보내기
 };
 

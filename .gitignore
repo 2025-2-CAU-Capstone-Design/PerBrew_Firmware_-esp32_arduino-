@@ -5,5 +5,7 @@
 .vscode/ipch
 .dev/
 src/deprecate/
+deprecated/
+test/
 .vscode/
 .test/
